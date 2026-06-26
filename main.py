@@ -1,7 +1,7 @@
 # ============================================
-# ===       COMPLETE WORKING BOT (v40)     ===
+# ===       COMPLETE WORKING BOT (v41)     ===
 # ===       ALL FUNCTIONS DEFINED           ===
-# ===       BOT MESSAGES + APPEARANCE FIX   ===
+# ===       NO NameError ERRORS             ===
 # ============================================
 import os
 import logging
@@ -1515,7 +1515,126 @@ async def show_user_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(f"Error: {e}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="admin_menu")]]))
 
 # ============================================
-# ===        BOT APPEARANCE - FIXED        ===
+# ===        SET DONATE QR                 ===
+# ============================================
+async def set_donate_qr_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    text = await format_message(context, "admin_set_donate_qr_start")
+    await query.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="back_to_donate_settings")]]))
+    return CD_GET_QR
+
+async def set_donate_qr_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message.photo:
+        text = await format_message(context, "admin_set_donate_qr_error")
+        await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+        return CD_GET_QR
+    qr_file_id = update.message.photo[-1].file_id
+    config_collection.update_one({"_id": "bot_config"}, {"$set": {"donate_qr_id": qr_file_id}}, upsert=True)
+    logger.info(f"Donate QR code update ho gaya.")
+    text = await format_message(context, "admin_set_donate_qr_success")
+    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+    await donate_settings_menu(update, context)
+    return ConversationHandler.END
+
+# ============================================
+# ===        SET LINKS                     ===
+# ============================================
+async def set_links_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    link_type = query.data.replace("admin_set_", "") 
+    
+    if link_type == "backup_link":
+        context.user_data['link_type'] = "backup"
+        text = await format_message(context, "admin_set_link_backup")
+        back_button = "back_to_links"
+    elif link_type == "download_link":
+        context.user_data['link_type'] = "download"
+        text = await format_message(context, "admin_set_link_download")
+        back_button = "back_to_links"
+    elif link_type == "help_link":
+        context.user_data['link_type'] = "help"
+        text = await format_message(context, "admin_set_link_help")
+        back_button = "back_to_links"
+    else:
+        text = await format_message(context, "admin_set_link_invalid")
+        await query.answer(text, show_alert=True)
+        return ConversationHandler.END
+
+    await query.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data=back_button)]]))
+    return CL_GET_LINK
+
+async def get_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    link_url = update.message.text
+    link_type = context.user_data['link_type']
+    config_collection.update_one({"_id": "bot_config"}, {"$set": {f"links.{link_type}": link_url}}, upsert=True)
+    logger.info(f"{link_type} link update ho gaya: {link_url}")
+    text = await format_message(context, "admin_set_link_success", {"link_type": link_type})
+    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+    await other_links_menu(update, context)
+    context.user_data.clear()
+    return ConversationHandler.END
+
+async def skip_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    link_type = context.user_data['link_type']
+    config_collection.update_one({"_id": "bot_config"}, {"$set": {f"links.{link_type}": None}}, upsert=True)
+    logger.info(f"{link_type} link skip kiya (None set).")
+    text = await format_message(context, "admin_set_link_skip", {"link_type": link_type})
+    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+    await other_links_menu(update, context)
+    context.user_data.clear()
+    return ConversationHandler.END
+
+# ============================================
+# ===        SET DELETE TIME               ===
+# ============================================
+async def set_delete_time_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    config = await get_config()
+    current_seconds = config.get("delete_seconds", 300) 
+    current_minutes = current_seconds // 60
+    
+    text = await format_message(context, "admin_set_delete_time_start", {
+        "current_minutes": current_minutes,
+        "current_seconds": current_seconds
+    })
+    await query.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="admin_menu")]]))
+    return CS_GET_DELETE_TIME
+
+async def set_delete_time_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        seconds = int(update.message.text)
+        if seconds <= 10:
+            text = await format_message(context, "admin_set_delete_time_low")
+            await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+            return CS_GET_DELETE_TIME
+                
+        config_collection.update_one({"_id": "bot_config"}, {"$set": {"delete_seconds": seconds}}, upsert=True)
+        logger.info(f"Auto-delete time update ho gaya: {seconds} seconds")
+        
+        text = await format_message(context, "admin_set_delete_time_success", {
+            "seconds": seconds,
+            "minutes": seconds // 60
+        })
+        await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+        await admin_command(update, context, from_callback=False) 
+        return ConversationHandler.END
+        
+    except ValueError:
+        text = await format_message(context, "admin_set_delete_time_nan")
+        await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+        return CS_GET_DELETE_TIME
+    except Exception as e:
+        logger.error(f"Delete time save karte waqt error: {e}")
+        text = await format_message(context, "admin_set_delete_time_error")
+        await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+        context.user_data.clear()
+        return ConversationHandler.END
+
+# ============================================
+# ===        BOT APPEARANCE                ===
 # ============================================
 async def appearance_menu_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -1653,7 +1772,7 @@ async def skip_menu_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 # ============================================
-# ===        BOT MESSAGES MENU - FIXED    ===
+# ===        BOT MESSAGES MENU             ===
 # ============================================
 async def bot_messages_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -2092,53 +2211,6 @@ async def send_broadcast_task(context: ContextTypes.DEFAULT_TYPE, message: Updat
         await context.bot.send_message(chat_id=admin_user_id, text=text, parse_mode=ParseMode.HTML)
     except Exception as e:
         logger.error(f"Admin ko broadcast report bhejte waqt error: {e}")
-
-# ============================================
-# ===        SET DELETE TIME               ===
-# ============================================
-async def set_delete_time_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    config = await get_config()
-    current_seconds = config.get("delete_seconds", 300) 
-    current_minutes = current_seconds // 60
-    
-    text = await format_message(context, "admin_set_delete_time_start", {
-        "current_minutes": current_minutes,
-        "current_seconds": current_seconds
-    })
-    await query.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="admin_menu")]]))
-    return CS_GET_DELETE_TIME
-
-async def set_delete_time_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        seconds = int(update.message.text)
-        if seconds <= 10:
-            text = await format_message(context, "admin_set_delete_time_low")
-            await update.message.reply_text(text, parse_mode=ParseMode.HTML)
-            return CS_GET_DELETE_TIME
-                
-        config_collection.update_one({"_id": "bot_config"}, {"$set": {"delete_seconds": seconds}}, upsert=True)
-        logger.info(f"Auto-delete time update ho gaya: {seconds} seconds")
-        
-        text = await format_message(context, "admin_set_delete_time_success", {
-            "seconds": seconds,
-            "minutes": seconds // 60
-        })
-        await update.message.reply_text(text, parse_mode=ParseMode.HTML)
-        await admin_command(update, context, from_callback=False) 
-        return ConversationHandler.END
-        
-    except ValueError:
-        text = await format_message(context, "admin_set_delete_time_nan")
-        await update.message.reply_text(text, parse_mode=ParseMode.HTML)
-        return CS_GET_DELETE_TIME
-    except Exception as e:
-        logger.error(f"Delete time save karte waqt error: {e}")
-        text = await format_message(context, "admin_set_delete_time_error")
-        await update.message.reply_text(text, parse_mode=ParseMode.HTML)
-        context.user_data.clear()
-        return ConversationHandler.END
 
 # ============================================
 # ===        USER COMMANDS                 ===
@@ -2709,6 +2781,38 @@ def main():
         allow_reentry=True
     )
 
+    # Set Donate QR Conversation
+    set_donate_qr_conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(set_donate_qr_start, pattern="^admin_set_donate_qr$")],
+        states={CD_GET_QR: [MessageHandler(filters.PHOTO, set_donate_qr_save)]},
+        fallbacks=global_fallbacks + donate_settings_fallback,
+        allow_reentry=True
+    )
+
+    # Set Links Conversation
+    set_links_conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(set_links_start, pattern="^admin_set_backup_link$|^admin_set_download_link$|^admin_set_help_link$")],
+        states={CL_GET_LINK: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_link), CommandHandler("skip", skip_link)]},
+        fallbacks=global_fallbacks + links_fallback,
+        allow_reentry=True
+    )
+
+    # Set Delete Time Conversation
+    set_delete_time_conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(set_delete_time_start, pattern="^admin_set_delete_time$")],
+        states={CS_GET_DELETE_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_delete_time_save)]},
+        fallbacks=global_fallbacks + admin_menu_fallback,
+        allow_reentry=True
+    )
+
+    # Set Menu Photo Conversation
+    set_menu_photo_conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(set_menu_photo_start, pattern="^admin_set_menu_photo$")],
+        states={CS_MENU_PHOTO: [MessageHandler(filters.PHOTO, set_menu_photo_save), CommandHandler("skip", skip_menu_photo)]},
+        fallbacks=global_fallbacks + update_photo_fallback,
+        allow_reentry=True
+    )
+
     # Appearance Conversation
     appearance_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(appearance_menu_start, pattern="^admin_menu_appearance$")],
@@ -2747,38 +2851,6 @@ def main():
             MM_GET_MSG: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_msg_save)],
         },
         fallbacks=global_fallbacks + messages_fallback,
-        allow_reentry=True
-    )
-
-    # Set Delete Time Conversation
-    set_delete_time_conv = ConversationHandler(
-        entry_points=[CallbackQueryHandler(set_delete_time_start, pattern="^admin_set_delete_time$")],
-        states={CS_GET_DELETE_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_delete_time_save)]},
-        fallbacks=global_fallbacks + admin_menu_fallback,
-        allow_reentry=True
-    )
-
-    # Set Donate QR Conversation
-    set_donate_qr_conv = ConversationHandler(
-        entry_points=[CallbackQueryHandler(set_donate_qr_start, pattern="^admin_set_donate_qr$")],
-        states={CD_GET_QR: [MessageHandler(filters.PHOTO, set_donate_qr_save)]},
-        fallbacks=global_fallbacks + donate_settings_fallback,
-        allow_reentry=True
-    )
-
-    # Set Links Conversation
-    set_links_conv = ConversationHandler(
-        entry_points=[CallbackQueryHandler(set_links_start, pattern="^admin_set_backup_link$|^admin_set_download_link$|^admin_set_help_link$")],
-        states={CL_GET_LINK: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_link), CommandHandler("skip", skip_link)]},
-        fallbacks=global_fallbacks + links_fallback,
-        allow_reentry=True
-    )
-
-    # Set Menu Photo Conversation
-    set_menu_photo_conv = ConversationHandler(
-        entry_points=[CallbackQueryHandler(set_menu_photo_start, pattern="^admin_set_menu_photo$")],
-        states={CS_MENU_PHOTO: [MessageHandler(filters.PHOTO, set_menu_photo_save), CommandHandler("skip", skip_menu_photo)]},
-        fallbacks=global_fallbacks + update_photo_fallback,
         allow_reentry=True
     )
 
@@ -2860,12 +2932,12 @@ def main():
     bot_app.add_handler(post_gen_conv)
     bot_app.add_handler(gen_link_conv)
     bot_app.add_handler(update_photo_conv)
-    bot_app.add_handler(appearance_conv)
-    bot_app.add_handler(bot_messages_conv)
-    bot_app.add_handler(set_delete_time_conv)
     bot_app.add_handler(set_donate_qr_conv)
     bot_app.add_handler(set_links_conv)
+    bot_app.add_handler(set_delete_time_conv)
     bot_app.add_handler(set_menu_photo_conv)
+    bot_app.add_handler(appearance_conv)
+    bot_app.add_handler(bot_messages_conv)
     bot_app.add_handler(add_co_admin_conv)
     bot_app.add_handler(remove_co_admin_conv)
     bot_app.add_handler(custom_post_conv)
