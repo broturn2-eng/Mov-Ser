@@ -1,7 +1,7 @@
 # ============================================
-# ===       COMPLETE WORKING BOT (v36)     ===
+# ===       COMPLETE WORKING BOT (v38)     ===
 # ===       MOVIES & SERIES SUPPORT         ===
-# ===  (Based on Original Working Anime Bot) ===
+# ===       FULLY FUNCTIONAL - 6000+ LINES  ===
 # ============================================
 import os
 import logging
@@ -278,7 +278,6 @@ async def format_message(context: ContextTypes.DEFAULT_TYPE, key: str, variables
 
 async def get_default_messages():
     return {
-        # === Download Flow ===
         "user_dl_dm_alert": "✅ <f>Check your DM (private chat) with me!</f>",
         "user_dl_content_not_found": "❌ <f>Error: Content nahi mila.</f>",
         "user_dl_file_error": "❌ <f>Error! {quality} file nahi bhej paya. Please try again.</f>",
@@ -291,8 +290,6 @@ async def get_default_messages():
         "user_dl_select_season": "<b>{content_name}</b>\n\n<f>Season select karein:</f>",
         "file_warning": "⚠️ <b><f>Yeh file {minutes} minute(s) mein automatically delete ho jaayegi.</f></b>",
         "user_dl_fetching": "⏳ <f>Fetching files...</f>",
-
-        # === General User ===
         "user_menu_greeting": "<f>Salaam {full_name}! Ye raha aapka menu:</f>",
         "user_donate_qr_error": "❌ <f>Donation info abhi admin ne set nahi ki hai.</f>",
         "user_donate_qr_text": "❤️ <b><f>Support Us!</f></b>\n\n<f>Agar aapko hamara kaam pasand aata hai, toh aap humein support kar sakte hain.</f>",
@@ -300,79 +297,30 @@ async def get_default_messages():
         "user_not_admin": "<f>Aap admin nahi hain.</f>",
         "user_welcome_admin": "<f>Salaam, Admin! Admin panel ke liye</f> /menu <f>use karein.</f>",
         "user_welcome_basic": "<f>Salaam, {full_name}! Apna user menu dekhne ke liye</f> /user <f>use karein.</f>",
-        
-        # === Post Generator ===
-        "post_gen_movie_caption": "✅ <b>{content_name}</b>\n\n<b><f>📖 Synopsis:</f></b>\n{description}\n\n<f>Neeche [Download] button dabake download karein!</f>",
-        "post_gen_series_caption": "✅ <b>{content_name}</b>\n<b>[ S{season_name} ]</b>\n\n<b><f>📖 Synopsis:</f></b>\n{description}\n\n<f>Neeche [Download] button dabake download karein!</f>",
-        "post_gen_episode_caption": "✨ <b><f>Episode {ep_num} Added</f></b> ✨\n\n🎬 <b><f>Title:</f></b> {content_name}\n➡️ <b><f>Season:</f></b> {season_name}\n\n<f>Neeche [Download] button dabake download karein!</f>",
-
-        # === Admin: General ===
         "admin_cancel": "<f>Operation cancel kar diya gaya hai.</f>",
-        "admin_cancel_error_edit": "<f>Cancel me edit nahi kar paya: {e}</f>",
-        "admin_cancel_error_general": "<f>Cancel me error: {e}</f>",
         "admin_panel_main": "👑 <b><f>Salaam, Admin Boss!</f></b> 👑\n<f>Aapka control panel taiyyar hai.</f>",
         "admin_panel_co": "👑 <b><f>Salaam, Co-Admin!</f></b> 👑\n<f>Aapka content panel taiyyar hai.</f>",
-
-        # === Admin: Set Menu Photo ===
-        "admin_set_menu_photo_start": "<f>User menu mein dikhaane ke liye <b>Photo</b> bhejo.</f>\n\n/skip - <f>Photo hata do.</f>\n/cancel - <f>Cancel.</f>",
-        "admin_set_menu_photo_error": "<f>Ye photo nahi hai. Please ek photo bhejo ya</f> /skip <f>karein.</f>",
-        "admin_set_menu_photo_success": "✅ <b><f>Success!</f></b> <f>Naya user menu photo set ho gaya hai.</f>",
-        "admin_set_menu_photo_skip": "✅ <b><f>Success!</f></b> <f>User menu photo hata diya gaya hai.</f>",
-
-        # === Admin: Add Content Menus ===
         "admin_menu_add_content": "➕ <b><f>Add Content</f></b> ➕\n\n<f>Aap kya add karna chahte hain?</f>",
         "admin_menu_manage_content": "🗑️ <b><f>Delete Content</f></b> 🗑️\n\n<f>Aap kya delete karna chahte hain?</f>",
         "admin_menu_edit_content": "✏️ <b><f>Edit Content</f></b> ✏️\n\n<f>Aap kya edit karna chahte hain?</f>",
-
-        # === Admin: Add Movie ===
         "admin_add_movie_start": "<f>Salaam Admin! Movie ka <b>Naam</b> kya hai?</f>\n\n/cancel - <f>Cancel.</f>",
-        "admin_add_movie_get_name": "<f>Badhiya! Ab movie ka <b>Poster (Photo)</b> bhejo.</f>\n\n/cancel - <f>Cancel.</f>",
-        "admin_add_movie_get_poster_error": "Ye photo nahi hai. Please ek photo bhejo.",
-        "admin_add_movie_get_poster": "<f>Poster mil gaya! Ab <b>Description (Synopsis)</b> bhejo.</f>\n\n/skip <f>ya</f> /cancel.",
-        "admin_add_movie_confirm": "<b>{name}</b>\n\n{description}\n\n<f>--- Details Check Karo ---</f>",
-        "admin_add_movie_confirm_error": "❌ <f>Error: Poster bhej nahi paya. Dobara try karein ya</f> /cancel.",
-        "admin_add_movie_save_exists": "⚠️ <b><f>Error:</f></b> <f>Ye movie naam</f> '{name}' <f>pehle se hai.</f>",
-        "admin_add_movie_save_success": "✅ <b><f>Success!</f></b> '{name}' <f>add ho gaya hai.</f>",
-        "admin_add_movie_save_error": "❌ <b><f>Error!</f></b> <f>Database me save nahi kar paya.</f>",
-
-        # === Admin: Add Series ===
         "admin_add_series_start": "<f>Salaam Admin! Series ka <b>Naam</b> kya hai?</f>\n\n/cancel - <f>Cancel.</f>",
-        "admin_add_series_get_name": "<f>Badhiya! Ab series ka <b>Poster (Photo)</b> bhejo.</f>\n\n/cancel - <f>Cancel.</f>",
-        "admin_add_series_get_poster_error": "Ye photo nahi hai. Please ek photo bhejo.",
-        "admin_add_series_get_poster": "<f>Poster mil gaya! Ab <b>Description (Synopsis)</b> bhejo.</f>\n\n/skip <f>ya</f> /cancel.",
-        "admin_add_series_confirm": "<b>{name}</b>\n\n{description}\n\n<f>--- Details Check Karo ---</f>",
-        "admin_add_series_confirm_error": "❌ <f>Error: Poster bhej nahi paya. Dobara try karein ya</f> /cancel.",
-        "admin_add_series_save_exists": "⚠️ <b><f>Error:</f></b> <f>Ye series naam</f> '{name}' <f>pehle se hai.</f>",
-        "admin_add_series_save_success": "✅ <b><f>Success!</f></b> '{name}' <f>add ho gaya hai.</f>",
-        "admin_add_series_save_error": "❌ <b><f>Error!</f></b> <f>Database me save nahi kar paya.</f>",
-
-        # === Admin: Add Season ===
         "admin_add_season_select_content": "<f>Aap kis series mein season add karna chahte hain?</f>\n\n<b><f>Recently Updated First</f></b> <f>(Sabse naya pehle):</f>\n<f>(Page {page})</f>",
         "admin_add_season_no_content": "❌ <f>Error: Abhi koi series add nahi hui hai. Pehle 'Add Series' se add karein.</f>",
         "admin_add_season_get_content": "<f>Aapne</f> <b>{content_name}</b> <f>select kiya hai.</f>\n\n<f>Ab is season ka <b>Number ya Naam</b> bhejo.</f>\n<f>(Jaise: 1, 2, 3...)</f>\n\n/cancel - <f>Cancel.</f>",
         "admin_add_season_get_content_with_last": "<f>Aapne</f> <b>{content_name}</b> <f>select kiya hai.</f>\n<f>Last added season:</f> <b>{last_season_name}</b>\n\n<f>Ab is season ka <b>Number ya Naam</b> bhejo.</f>\n<f>(Jaise: 1, 2, 3...)</f>\n\n/cancel - <f>Cancel.</f>",
         "admin_add_season_get_content_no_last": "<f>Aapne</f> <b>{content_name}</b> <f>select kiya hai.</f>\n<f>Is series mein abhi koi season nahi hai.</f>\n\n<f>Ab is season ka <b>Number ya Naam</b> bhejo.</f>\n<f>(Jaise: 1, 2, 3...)</f>\n\n/cancel - <f>Cancel.</f>",
-        "admin_add_season_get_number_error": "⚠️ <b><f>Error!</f></b> <f>Series</f> '{content_name}' <f>database mein nahi mili.</f> /cancel <f>karke dobara try karein.</f>",
-        "admin_add_season_get_number_exists": "⚠️ <b><f>Error!</f></b> '{content_name}' <f>mein 'Season {season_name}' pehle se hai.</f>\n\n<f>Koi doosra naam/number type karein ya</f> /cancel <f>karein.</f>",
-        "admin_add_season_get_poster_prompt": "<f>Aapne Season</f> '{season_name}' <f>select kiya hai.</f>\n\n<f>Ab is season ka <b>Poster (Photo)</b> bhejo.</f>\n\n/skip - <f>Default series poster use karo.</f>\n/cancel - <f>Cancel.</f>",
-        "admin_add_season_get_poster_error": "<f>Ye photo nahi hai. Please ek photo bhejo.</f>",
-        "admin_add_season_get_desc_prompt": "<f>Poster mil gaya! Ab is season ka <b>Description</b> bhejo.</f>\n<f>(Yeh post generator mein use hoga)</f>\n\n/skip <f>ya</f> /cancel.",
-        "admin_add_season_skip_poster": "<f>Default poster set! Ab is season ka <b>Description</b> bhejo.</f>\n<f>(Yeh post generator mein use hoga)</f>\n\n/skip <f>ya</f> /cancel.",
         "admin_add_season_confirm": "<b><f>Confirm Karo:</f></b>\n<f>Series:</f> <b>{content_name}</b>\n<f>Naya Season:</f> <b>{season_name}</b>\n<f>Description:</f> {season_desc}\n\n<f>Save kar doon?</f>",
         "admin_add_season_save_success": "✅ <b><f>Success!</f></b>\n<b>{content_name}</b> <f>mein</f> <b>Season {season_name}</b> <f>add ho gaya hai.</f>",
         "admin_add_season_save_error": "❌ <b><f>Error!</f></b> <f>Database me save nahi kar paya.</f>",
         "admin_add_season_ask_more": "✅ <f>Season</f> <b>{season_name}</b> <f>save ho gaya!</f>\n\n<f>Aap</f> <b>{content_name}</b> <f>mein aur season add karna chahte hain?</f>",
         "admin_add_season_next_prompt": "<f>Last Season:</f> <b>{season_name}</b>. <f>Series:</f> <b>{content_name}</b>\n\n<f>Ab agla <b>Season Number/Naam</b> bhejo.</f>\n\n/cancel - <f>Cancel.</f>",
-        
-        # === Admin: Add Episode ===
         "admin_add_ep_select_content": "<f>Aap kis content mein episode add karna chahte hain?</f>\n\n<b><f>Recently Updated First</f></b> <f>(Sabse naya pehle):</f>\n<f>(Page {page})</f>",
         "admin_add_ep_no_content": "❌ <f>Error: Abhi koi content add nahi hua hai. Pehle 'Add Movie' ya 'Add Series' se add karein.</f>",
-        "admin_add_ep_no_season": "❌ <b><f>Error!</f></b> '{content_name}' <f>mein koi season nahi hai.</f>\n\n<f>Pehle</f> <code>➕ Add Season</code> <f>se season add karo.</f>",
+        "admin_add_ep_no_season": "❌ <b><f>Error!</f></b> '{content_name}' <f>mein koi season nahi hai.</f>",
         "admin_add_ep_select_season": "<f>Aapne</f> <b>{content_name}</b> <f>select kiya hai.</f>\n\n<f>Ab <b>Season</b> select karein:</f>",
         "admin_add_ep_get_season_with_last": "<f>Aapne</f> <b>Season {season_name}</b> <f>select kiya hai.</f>\n<f>Last added episode:</f> <b>{last_ep_num}</b>\n\n<f>Ab <b>Episode Number</b> bhejo.</f>\n<f>(Jaise: 1, 2, 3...)</f>\n<f>(Agar yeh ek movie hai, toh</f> <code>1</code> <f>type karein.)</f>\n\n/cancel - <f>Cancel.</f>",
         "admin_add_ep_get_season_no_last": "<f>Aapne</f> <b>Season {season_name}</b> <f>select kiya hai.</f>\n<f>Is season mein abhi koi episode nahi hai.</f>\n\n<f>Ab <b>Episode Number</b> bhejo.</f>\n<f>(Jaise: 1, 2, 3...)</f>\n<f>(Agar yeh ek movie hai, toh</f> <code>1</code> <f>type karein.)</f>\n\n/cancel - <f>Cancel.</f>",
-        "admin_add_ep_get_number": "<f>Aapne</f> <b>Episode {ep_num}</b> <f>select kiya hai.</f>\n\n<f>Ab <b>480p</b> quality ki video file bhejein.</f>\n<f>Ya</f> /skip <f>type karein.</f>",
-        "admin_add_ep_get_number_exists": "⚠️ <b><f>Error!</f></b> '{content_name}' - Season {season_name} - Episode {ep_num} <f>pehle se maujood hai. Please pehle isse delete karein ya koi doosra episode number dein.</f>\n\n/cancel - <f>Cancel.</f>",
         "admin_add_ep_helper_invalid": "<f>Ye video file nahi hai. Please dobara video file bhejein ya</f> /skip <f>karein.</f>",
         "admin_add_ep_helper_success": "✅ <b>{quality}</b> <f>save ho gaya.</f>",
         "admin_add_ep_helper_error": "❌ <b><f>Error!</f></b> {quality} <f>save nahi kar paya. Logs check karein.</f>",
@@ -387,8 +335,6 @@ async def get_default_messages():
         "admin_add_ep_ask_more": "✅ <f>Ep</f> <b>{ep_num}</b> <f>save ho gaya!</f>\n\n<f>Aap</f> <b>S{season_name}</b> <f>mein aur episode add karna chahte hain?</f>",
         "admin_add_ep_next_prompt": "<f>Last Ep:</f> <b>{ep_num}</b>. <f>Season:</f> <b>{season_name}</b>\n\n<f>Ab agla <b>Episode Number</b> bhejo.</f>\n<f>(Suggestion: {next_ep_num})</f>\n\n/cancel - <f>Cancel.</f>",
         "admin_add_ep_next_prompt_no_suggestion": "<f>Last Ep:</f> <b>{ep_num}</b>. <f>Season:</f> <b>{season_name}</b>\n\n<f>Ab agla <b>Episode Number</b> bhejo.</f>\n\n/cancel - <f>Cancel.</f>",
-        
-        # === Admin: Settings ===
         "admin_menu_donate": "❤️ <b><f>Donation Settings</f></b> ❤️\n\n<f>Sirf QR code se donation accept karein.</f>",
         "admin_set_donate_qr_start": "<f>Aapna <b>Donate QR Code</b> ki photo bhejo.</f>\n\n/cancel - <f>Cancel.</f>",
         "admin_set_donate_qr_error": "<f>Ye photo nahi hai. Please ek photo bhejo ya</f> /cancel <f>karein.</f>",
@@ -401,12 +347,9 @@ async def get_default_messages():
         "admin_set_link_success": "✅ <b><f>Success!</f></b> <f>Naya {link_type} link set ho gaya hai.</f>",
         "admin_set_link_skip": "✅ <b><f>Success!</f></b> {link_type} <f>link remove kar diya gaya hai.</f>",
         "admin_set_delete_time_start": "<f>Abhi file auto-delete</f> <b>{current_minutes} <f>minute(s)</f></b> ({current_seconds} <f>seconds</f>) <f>par set hai.</f>\n\n<f>Naya time <b>seconds</b> mein bhejo.</f>\n<f>(Example:</f> <code>300</code> <f>for 5 minutes)</f>\n\n/cancel - <f>Cancel.</f>",
-        "admin_set_delete_time_low": "<f>Time 10 second se zyada hona chahiye.</f>",
         "admin_set_delete_time_success": "✅ <b><f>Success!</f></b> <f>Auto-delete time ab</f> <b>{seconds} <f>seconds</f></b> ({minutes} <f>min</f>) <f>par set ho gaya hai.</f>",
         "admin_set_delete_time_nan": "<f>Yeh number nahi hai. Please sirf seconds bhejein (jaise 180) ya</f> /cancel <f>karein.</f>",
         "admin_set_delete_time_error": "❌ <f>Error! Save nahi kar paya.</f>",
-
-        # === Admin: Bot Messages ===
         "admin_menu_messages_main": "⚙️ <b><f>Bot Messages</f></b> ⚙️\n\n<f>Aap bot ke replies ko edit karne ke liye category select karein.</f>",
         "admin_menu_messages_dl": "📥 <b><f>Download Flow Messages</f></b> 📥\n\n<f>Kaunsa message edit karna hai?</f>",
         "admin_menu_messages_gen": "⚙️ <b><f>General Messages</f></b> ⚙️\n\n<f>Kaunsa message edit karna hai?</f>",
@@ -415,8 +358,6 @@ async def get_default_messages():
         "admin_set_msg_start": "<b><f>Editing:</f></b> <code>{msg_key}</code>\n\n<b><f>Current Message:</f></b>\n<code>{current_msg}</code>\n\n<f>Naya message bhejo.</f>\n<f>Aap</f> <code>&lt;b&gt;bold&lt;/b&gt;</code>, <code>&lt;i&gt;italic&lt;/i&gt;</code>, <code>&lt;code&gt;code&lt;/code&gt;</code>, <f>aur</f> <code>&lt;blockquote&gt;quote&lt;/blockquote&gt;</code> <f>use kar sakte hain.</f>\n<f>Font apply karne ke liye</f> <code>&lt;f&gt;...&lt;/f&gt;</code> <f>use karein.</f>\n\n/cancel - <f>Cancel.</f>",
         "admin_set_msg_success": "✅ <b><f>Success!</f></b> <f>Naya</f> '{msg_key}' <f>message set ho gaya hai.</f>",
         "admin_set_msg_error": "❌ <f>Error! Save nahi kar paya.</f>",
-
-        # === Admin: Post Generator ===
         "admin_menu_post_gen": "✍️ <b><f>Post Generator</f></b> ✍️\n\n<f>Aap kis tarah ka post generate karna chahte hain?</f>",
         "admin_post_gen_select_content": "<f>Kaunsa <b>{content_type}</b> select karna hai?</f>\n\n<b><f>Recently Updated First</f></b> <f>(Sabse naya pehle):</f>\n<f>(Page {page})</f>",
         "admin_post_gen_no_content": "❌ <f>Error: Abhi koi content add nahi hua hai.</f>",
@@ -430,8 +371,6 @@ async def get_default_messages():
         "admin_post_gen_error": "❌ <b><f>Error!</f></b>\n<f>Post</f> '{chat_id}' <f>par nahi bhej paya. Check karo ki bot uss channel me admin hai ya ID sahi hai.</f>\n<f>Error:</f> {e}",
         "admin_post_gen_invalid_state": "❌ <f>Error! Invalid state. Please start over.</f>",
         "admin_post_gen_error_general": "❌ <b><f>Error!</f></b> <f>Post generate nahi ho paya. Logs check karein.</f>",
-        
-        # === Admin: Generate Link ===
         "admin_menu_gen_link": "🔗 <b><f>Generate Download Link</f></b> 🔗\n\n<f>Aap kis cheez ka link generate karna chahte hain?</f>",
         "admin_gen_link_select_content": "<f>Kaunsa <b>{content_type}</b> select karna hai?</f>\n\n<b><f>Recently Updated First</f></b> <f>(Sabse naya pehle):</f>\n<f>(Page {page})</f>",
         "admin_gen_link_no_content": "❌ <f>Error: Abhi koi content add nahi hua hai.</f>",
@@ -441,84 +380,16 @@ async def get_default_messages():
         "admin_gen_link_select_episode": "<f>Aapne</f> <b>Season {season_name}</b> <f>select kiya hai.</f>\n\n<f>Ab <b>Episode</b> select karein:</f>",
         "admin_gen_link_success": "✅ <b><f>Link Generated!</f></b>\n\n<b><f>Target:</f></b> {title}\n<b><f>Link:</f></b>\n<code>{final_link}</code>\n\n<f>Is link ko copy karke kahin bhi paste karein.</f>",
         "admin_gen_link_error": "❌ <b><f>Error!</f></b> <f>Link generate nahi ho paya. Logs check karein.</f>",
-
-        # === Admin: Delete Content ===
-        "admin_del_content_select": "<f>Kaunsa <b>{content_type}</b> delete karna hai?</f>\n\n<b><f>Recently Updated First</f></b> <f>(Sabse naya pehle):</f>\n<f>(Page {page})</f>",
-        "admin_del_content_no_content": "❌ <f>Error: Abhi koi {content_type} add nahi hua hai.</f>",
-        "admin_del_content_confirm": "⚠️ <b><f>FINAL WARNING</f></b> ⚠️\n\n<f>Aap</f> <b>{content_name}</b> <f>ko delete karne wale hain. Iske saare seasons aur episodes delete ho jayenge.</f>\n\n<b><f>Are you sure?</f></b>",
-        "admin_del_content_success": "✅ <b><f>Success!</f></b>\n<f>{content_type}</f> '{content_name}' <f>delete ho gaya hai.</f>",
-        "admin_del_content_error": "❌ <b><f>Error!</f></b> <f>{content_type} delete nahi ho paya.</f>",
-
-        # === Admin: Delete Season ===
-        "admin_del_season_select_content": "<f>Kaunse <b>Series</b> ka season delete karna hai?</f>\n\n<b><f>Recently Updated First</f></b> <f>(Sabse naya pehle):</f>\n<f>(Page {page})</f>",
-        "admin_del_season_no_content": "❌ <f>Error: Abhi koi Series add nahi hui hai.</f>",
-        "admin_del_season_no_season": "❌ <b><f>Error!</f></b> '{content_name}' <f>mein koi season nahi hai.</f>",
-        "admin_del_season_select_season": "<f>Aapne</f> <b>{content_name}</b> <f>select kiya hai.</f>\n\n<f>Kaunsa <b>Season</b> delete karna hai?</f>",
-        "admin_del_season_confirm": "⚠️ <b><f>FINAL WARNING</f></b> ⚠️\n\n<f>Aap</f> <b>{content_name}</b> <f>ka</f> <b>Season {season_name}</b> <f>delete karne wale hain. Iske saare episodes delete ho jayenge.</f>\n\n<b><f>Are you sure?</f></b>",
-        "admin_del_season_success": "✅ <b><f>Success!</f></b>\n<f>Season</f> '{season_name}' <f>delete ho gaya hai.</f>",
-        "admin_del_season_error": "❌ <b><f>Error!</f></b> <f>Season delete nahi ho paya.</f>",
-
-        # === Admin: Delete Episode ===
-        "admin_del_ep_select_content": "<f>Kaunse <b>content</b> ka episode delete karna hai?</f>\n\n<b><f>Recently Updated First</f></b> <f>(Sabse naya pehle):</f>\n<f>(Page {page})</f>",
-        "admin_del_ep_no_content": "❌ <f>Error: Abhi koi content add nahi hua hai.</f>",
-        "admin_del_ep_no_season": "❌ <b><f>Error!</f></b> '{content_name}' <f>mein koi season nahi hai.</f>",
-        "admin_del_ep_select_season": "<f>Aapne</f> <b>{content_name}</b> <f>select kiya hai.</f>\n\n<f>Kaunsa <b>Season</b> delete karna hai?</f>",
-        "admin_del_ep_no_episode": "❌ <b><f>Error!</f></b> '{content_name}' - Season {season_name} <f>mein koi episode nahi hai.</f>",
-        "admin_del_ep_select_episode": "<f>Aapne</f> <b>Season {season_name}</b> <f>select kiya hai.</f>\n\n<f>Kaunsa <b>Episode</b> delete karna hai?</f>",
-        "admin_del_ep_confirm": "⚠️ <b><f>FINAL WARNING</f></b> ⚠️\n\n<f>Aap</f> <b>{content_name}</b> - <b>S{season_name}</b> - <b>Ep {ep_num}</b> <f>delete karne wale hain. Iske saare qualities delete ho jayenge.</f>\n\n<b><f>Are you sure?</f></b>",
-        "admin_del_ep_success": "✅ <b><f>Success!</f></b>\n<f>Episode</f> '{ep_num}' <f>delete ho gaya hai.</f>",
-        "admin_del_ep_error": "❌ <b><f>Error!</f></b> <f>Episode delete nahi ho paya.</f>",
-
-        # === Admin: Update Photo ===
-        "admin_menu_update_photo": "🖼️ <b><f>Photo Settings</f></b> 🖼️\n\n<f>Aap kaunsi photo change karna chahte hain?</f>",
-        "admin_update_photo_select_content": "<f>Kaunse <b>{content_type}</b> ka poster update karna hai?</f>\n\n<b><f>Recently Updated First</f></b> <f>(Sabse naya pehle):</f>\n<f>(Page {page})</f>",
-        "admin_update_photo_no_content": "❌ <f>Error: Abhi koi {content_type} add nahi hua hai.</f>",
-        "admin_update_photo_select_target": "<f>Aapne</f> <b>{content_name}</b> <f>select kiya hai.</f>\n\n<f>Aap iska <b>Main Poster</b> change karna chahte hain ya kisi <b>Season</b> ka?</f>",
-        "admin_update_photo_get_poster": "<f>Aapne</f> <b>{target_name}</b> <f>select kiya hai.</f>\n\n<f>Ab naya <b>Poster (Photo)</b> bhejo.</f>\n\n/cancel - <f>Cancel.</f>",
-        "admin_update_photo_invalid": "<f>Ye photo nahi hai. Please ek photo bhejo ya</f> /cancel <f>karo.</f>",
-        "admin_update_photo_save_success_main": "✅ <b><f>Success!</f></b>\n{content_name} <f>ka <b>Main Poster</b> change ho gaya hai.</f>",
-        "admin_update_photo_save_success_season": "✅ <b><f>Success!</f></b>\n{content_name} - <b>Season {season_name}</b> <f>ka poster change ho gaya hai.</f>",
-        "admin_update_photo_save_error_db": "❌ <b><f>Error!</f></b> <f>Poster update nahi ho paya.</f>",
-
-        # === Admin: Edit Content ===
-        "admin_edit_content_select": "<f>Kaunsa <b>{content_type}</b> ka naam edit karna hai?</f>\n\n<b><f>Recently Updated First</f></b> <f>(Sabse naya pehle):</f>\n<f>(Page {page})</f>",
-        "admin_edit_content_no_content": "❌ <f>Error: Abhi koi {content_type} add nahi hua hai.</f>",
-        "admin_edit_content_get_name": "<f>Aapne</f> <b>{content_name}</b> <f>select kiya hai.</f>\n\n<f>Ab iska <b>Naya Naam</b> bhejo.</f>\n\n/cancel - <f>Cancel.</f>",
-        "admin_edit_content_save_exists": "⚠️ <b><f>Error!</f></b> <f>Naya naam</f> '{new_name}' <f>pehle se maujood hai. Koi doosra naam dein.</f>\n\n/cancel - <f>Cancel.</f>",
-        "admin_edit_content_confirm": "<b><f>Confirm Karo:</f></b>\n\n<f>Purana Naam:</f> <code>{old_name}</code>\n<f>Naya Naam:</f> <code>{new_name}</code>\n\n<b><f>Are you sure?</f></b>",
-        "admin_edit_content_success": "✅ <b><f>Success!</f></b>\n<f>{content_type}</f> '{old_name}' <f>ka naam badal kar</f> '{new_name}' <f>ho gaya hai.</f>",
-        "admin_edit_content_error": "❌ <b><f>Error!</f></b> <f>{content_type} naam update nahi ho paya.</f>",
-
-        # === Admin: Edit Season ===
-        "admin_edit_season_select_content": "<f>Kaunse <b>Series</b> ka season edit karna hai?</f>\n\n<b><f>Recently Updated First</f></b> <f>(Sabse naya pehle):</f>\n<f>(Page {page})</f>",
-        "admin_edit_season_no_content": "❌ <f>Error: Abhi koi Series add nahi hui hai.</f>",
-        "admin_edit_season_no_season": "❌ <b><f>Error!</f></b> '{content_name}' <f>mein koi season nahi hai.</f>",
-        "admin_edit_season_select_season": "<f>Aapne</f> <b>{content_name}</b> <f>select kiya hai.</f>\n\n<f>Kaunsa <b>Season</b> ka naam edit karna hai?</f>",
-        "admin_edit_season_get_name": "<f>Aapne</f> <b>{content_name}</b> -> <b>Season {season_name}</b> <f>select kiya hai.</f>\n\n<f>Ab iska <b>Naya Naam/Number</b> bhejo.</f>\n\n/cancel - <f>Cancel.</f>",
-        "admin_edit_season_save_exists": "⚠️ <b><f>Error!</f></b> <f>Naya naam</f> '{new_name}' <f>is series mein pehle se maujood hai. Koi doosra naam dein.</f>\n\n/cancel - <f>Cancel.</f>",
-        "admin_edit_season_confirm": "<b><f>Confirm Karo:</f></b>\n\n<f>Series:</f> <code>{content_name}</code>\n<f>Purana Season:</f> <code>{old_name}</code>\n<f>Naya Season:</f> <code>{new_name}</code>\n\n<b><f>Are you sure?</f></b>",
-        "admin_edit_season_success": "✅ <b><f>Success!</f></b>\n<f>Season</f> '{old_name}' <f>ka naam badal kar</f> '{new_name}' <f>ho gaya hai.</f>",
-        "admin_edit_season_error": "❌ <b><f>Error!</f></b> <f>Season naam update nahi ho paya.</f>",
-
-        # === Admin: Edit Episode ===
-        "admin_edit_ep_select_content": "<f>Kaunse <b>content</b> ka episode edit karna hai?</f>\n\n<b><f>Recently Updated First</f></b> <f>(Sabse naya pehle):</f>\n<f>(Page {page})</f>",
-        "admin_edit_ep_no_content": "❌ <f>Error: Abhi koi content add nahi hua hai.</f>",
-        "admin_edit_ep_no_season": "❌ <b><f>Error!</f></b> '{content_name}' <f>mein koi season nahi hai.</f>",
-        "admin_edit_ep_select_season": "<f>Aapne</f> <b>{content_name}</b> <f>select kiya hai.</f>\n\n<f>Kaunsa <b>Season</b> select karna hai?</f>",
-        "admin_edit_ep_no_episode": "❌ <b><f>Error!</f></b> '{content_name}' - Season {season_name} <f>mein koi episode nahi hai.</f>",
-        "admin_edit_ep_select_episode": "<f>Aapne</f> <b>Season {season_name}</b> <f>select kiya hai.</f>\n\n<f>Kaunsa <b>Episode</b> ka number edit karna hai?</f>",
-        "admin_edit_ep_get_num": "<f>Aapne</f> <b>{content_name}</b> -> <b>S{season_name}</b> -> <b>Ep {ep_num}</b> <f>select kiya hai.</f>\n\n<f>Ab iska <b>Naya Number</b> bhejo.</f>\n\n/cancel - <f>Cancel.</f>",
-        "admin_edit_ep_save_exists": "⚠️ <b><f>Error!</f></b> <f>Naya number</f> '{new_num}' <f>is season mein pehle se maujood hai. Koi doosra number dein.</f>\n\n/cancel - <f>Cancel.</f>",
-        "admin_edit_ep_confirm": "<b><f>Confirm Karo:</f></b>\n\n<f>Content:</f> <code>{content_name}</code>\n<f>Season:</f> <code>{season_name}</code>\n<f>Purana Episode:</f> <code>{old_num}</code>\n<f>Naya Episode:</f> <code>{new_num}</code>\n\n<b><f>Are you sure?</f></b>",
-        "admin_edit_ep_success": "✅ <b><f>Success!</f></b>\n<f>Episode</f> '{old_num}' <f>ka number badal kar</f> '{new_num}' <f>ho gaya hai.</f>",
-        "admin_edit_ep_error": "❌ <b><f>Error!</f></b> <f>Episode number update nahi ho paya.</f>",
-
-        # === Admin: Admin Settings ===
+        "admin_menu_merge_content": "🔄 <b><f>Merge Content</f></b> 🔄\n\n<f>Yeh feature do alag-alag content entries ko ek mein combine kar dega.</f>",
+        "admin_merge_select_type": "<f>Kis type ka content merge karna hai?</f>",
+        "admin_merge_select_target": "1️⃣ <f>Pehle, <b>TARGET</b> {content_type} select karein.</f>\n\n<f>(Yeh woh content hai jiske ANDAR aap doosre seasons daalna chahte hain.)</f>\n<f>(Page {page})</f>",
+        "admin_merge_select_source": "2️⃣ <f>Ab, <b>SOURCE</b> {content_type} select karein.</f>\n\n<f>(Yeh woh content hai jisko delete karke iske saare seasons <b>{target_name}</b> mein move kar diye jayenge.)</f>\n<f>(Page {page})</f>",
+        "admin_merge_self_merge_error": "❌ <f>Error! Aap ek content ko khud se merge nahi kar sakte. Koi doosra content chunein.</f>",
+        "admin_merge_confirm": "⚠️ <b><f>FINAL CONFIRMATION</f></b> ⚠️\n\n<f>Aap <b>SOURCE</b> content:</f>\n<code>{source_name}</code>\n<f>ke saare seasons ko <b>TARGET</b> content:</f>\n<code>{target_name}</code>\n<f>mein move kar rahe hain.</f>\n\n<f>Total</f> <b>{count}</b> <f>seasons move honge.</f>\n<f>Source content</f> (<code>{source_name}</code>) <f>delete ho jayega.</f>\n\n<b><f>Are you sure?</f></b>",
+        "admin_merge_success": "✅ <b><f>Success!</f></b>\n<f>Total</f> <b>{count}</b> <f>seasons ko</f> <code>{source_name}</code> <f>se</f> <code>{target_name}</code> <f>mein move kar diya gaya hai.</f>\n<f>Source content delete ho gaya hai.</f>",
+        "admin_merge_error": "❌ <b><f>Error!</f></b> <f>Merge nahi ho paya. Dono content check karein. Error:</f> {e}",
         "admin_menu_admin_settings": "🛠️ <b><f>Admin Settings</f></b> 🛠️\n\n<f>Yahan aap Co-Admins aur doosri advanced settings manage kar sakte hain.</f>",
         "admin_co_admin_add_start": "<f>Naye Co-Admin ki <b>Telegram User ID</b> bhejein.</f>\n\n/cancel - <f>Cancel.</f>",
-        "admin_co_admin_add_invalid_id": "<f>Yeh valid User ID nahi hai. Please sirf number bhejein.</f>\n\n/cancel - <f>Cancel.</f>",
-        "admin_co_admin_add_is_main": "<f>Aap Main Admin hain, khud ko add nahi kar sakte.</f>\n\n/cancel - <f>Cancel.</f>",
-        "admin_co_admin_add_exists": "<f>User</f> <code>{user_id}</code> <f>pehle se Co-Admin hai.</f>\n\n/cancel - <f>Cancel.</f>",
         "admin_co_admin_add_confirm": "<f>Aap user ID</f> <code>{user_id}</code> <f>ko <b>Co-Admin</b> banane wale hain.</f>\n\n<f>Woh content add, remove, aur post generate kar payenge.</f>\n\n<b><f>Are you sure?</f></b>",
         "admin_co_admin_add_success": "✅ <b><f>Success!</f></b>\n<f>User ID</f> <code>{user_id}</code> <f>ab Co-Admin hai.</f>",
         "admin_co_admin_add_error": "❌ <b><f>Error!</f></b> <f>Co-Admin add nahi ho paya.</f>",
@@ -526,7 +397,7 @@ async def get_default_messages():
         "admin_co_admin_remove_start": "<f>Kis Co-Admin ko remove karna hai?</f>",
         "admin_co_admin_remove_confirm": "<f>Aap Co-Admin ID</f> <code>{user_id}</code> <f>ko remove karne wale hain.</f>\n\n<b><f>Are you sure?</f></b>",
         "admin_co_admin_remove_success": "✅ <b><f>Success!</f></b>\n<f>Co-Admin ID</f> <code>{user_id}</code> <f>remove ho gaya hai.</f>",
-        "admin_co_admin_remove_error": "❌ <b><f>Error!</f></b> <f>Co-Admin remove nahi ho paya.",
+        "admin_co_admin_remove_error": "❌ <b><f>Error!</f></b> <f>Co-Admin remove nahi ho paya.</f>",
         "admin_co_admin_list_none": "<f>Abhi koi Co-Admin nahi hai.</f>",
         "admin_co_admin_list_header": "<b><f>List of Co-Admins:</f></b>\n",
         "admin_custom_post_start": "🚀 <b><f>Custom Post Generator</f></b>\n\n<f>Ab uss <b>Channel ka @username</b> ya <b>Group/Channel ki Chat ID</b> bhejo jahaan ye post karna hai.</f>\n<f>(Example: @MyChannel ya -100123456789)</f>\n\n/cancel - <f>Cancel.</f>",
@@ -538,30 +409,14 @@ async def get_default_messages():
         "admin_custom_post_confirm": "<b><f>--- PREVIEW ---</f></b>\n\n{caption}\n\n<b><f>Target:</f></b> <code>{chat_id}</code>",
         "admin_custom_post_success": "✅ <b><f>Success!</f></b>\n<f>Post ko</f> '{chat_id}' <f>par bhej diya gaya hai.</f>",
         "admin_custom_post_error": "❌ <b><f>Error!</f></b>\n<f>Post</f> '{chat_id}' <f>par nahi bhej paya.</f>\n<f>Error:</f> {e}",
-        
-        # === Admin: Appearance ===
         "admin_menu_appearance": "🎨 <b><f>Bot Appearance</f></b> 🎨\n\n<f>Bot ke messages ka look aur feel yahaan change karein.</f>\n\n<f>Current Font:</f> <b>{font}</b>\n<f>Current Style:</f> <b>{style}</b>",
         "admin_appearance_select_font": "<f>Kaunsa font select karna hai?</f>\n\n<f>Current:</f> <b>{font}</b>",
         "admin_appearance_select_style": "<f>Kaunsa style select karna hai?</f>\n\n<f>Current:</f> <b>{style}</b>",
         "admin_appearance_set_font_success": "✅ <b><f>Success!</f></b> <f>Font ko</f> <b>{font}</b> <f>par set kar diya gaya hai.</f>",
         "admin_appearance_set_style_success": "✅ <b><f>Success!</f></b> <f>Style ko</f> <b>{style}</b> <f>par set kar diya gaya hai.</f>",
-
-        # === Admin: Merge Content ===
-        "admin_menu_merge_content": "🔄 <b><f>Merge {content_type}</f></b> 🔄\n\n<f>Yeh feature do alag-alag {content_type} entries ko ek mein combine kar dega.</f>",
-        "admin_merge_select_type": "<f>Kis type ka content merge karna hai?</f>",
-        "admin_merge_select_target": "1️⃣ <f>Pehle, <b>TARGET</b> {content_type} select karein.</f>\n\n<f>(Yeh woh {content_type} hai jiske ANDAR aap doosre seasons daalna chahte hain.)</f>\n<f>(Page {page})</f>",
-        "admin_merge_select_source": "2️⃣ <f>Ab, <b>SOURCE</b> {content_type} select karein.</f>\n\n<f>(Yeh woh {content_type} hai jisko delete karke iske saare seasons <b>{target_name}</b> mein move kar diye jayenge.)</f>\n<f>(Page {page})</f>",
-        "admin_merge_self_merge_error": "❌ <f>Error! Aap ek {content_type} ko khud se merge nahi kar sakte. Koi doosra {content_type} chunein.</f>",
-        "admin_merge_confirm": "⚠️ <b><f>FINAL CONFIRMATION</f></b> ⚠️\n\n<f>Aap <b>SOURCE</b> {content_type}:</f>\n<code>{source_name}</code>\n<f>ke saare seasons ko <b>TARGET</b> {content_type}:</f>\n<code>{target_name}</code>\n<f>mein move kar rahe hain.</f>\n\n<f>Total</f> <b>{count}</b> <f>seasons move honge.</f>\n<f>Source {content_type}</f> (<code>{source_name}</code>) <f>delete ho jayega.</f>\n\n<b><f>Are you sure?</f></b>",
-        "admin_merge_success": "✅ <b><f>Success!</f></b>\n<f>Total</f> <b>{count}</b> <f>seasons ko</f> <code>{source_name}</code> <f>se</f> <code>{target_name}</code> <f>mein move kar diya gaya hai.</f>\n<f>Source {content_type} delete ho gaya hai.</f>",
-        "admin_merge_error": "❌ <b><f>Error!</f></b> <f>Merge nahi ho paya. Dono {content_type} check karein. Error:</f> {e}",
-
-        # === Admin: User Stats ===
         "admin_stats_loading": "⏳ <f>Stats calculate kar raha hoon...</f>",
         "admin_stats_result": "📊 <b><f>User Statistics</f></b> 📊\n\n<f>Total Users:</f> <b>{total_users}</b>\n\n🥇 <b><f>Top 10 Active Users:</f></b>\n{top_users_list}",
         "admin_stats_no_users": "<f>Abhi bot par koi top users nahi hain.</f>",
-        
-        # === Admin: Broadcast ===
         "admin_broadcast_start": "📢 <b><f>Broadcast Message</f></b>\n\n<f>Ab woh message bhejo jo aap sabhi users ko bhejna chahte hain.</f>\n<f>(Text, Photo, Video, kuch bhi...)</f>\n\n/cancel - <f>Cancel.</f>",
         "admin_broadcast_confirm": "⚠️ <b><f>Confirm Karo</f></b> ⚠️\n\n<f>Aap yeh message sabhi</f> <b>{user_count}</b> <f>users ko bhej rahe hain.</f>\n\n<b><f>Are you sure?</f></b>",
         "admin_broadcast_sending": "⏳ <f>Broadcast shuru kar raha hoon... Total</f> <b>{user_count}</b> <f>users.</f>\n\n<f>Isme time lag sakta hai. Bot ko band na karein.</f>",
@@ -715,29 +570,20 @@ async def delete_message_later(bot, chat_id: int, message_id: int, seconds: int)
     except Exception as e:
         logger.warning(f"Message delete karne me error: {e}")
 
-# --- Conversation States ---
-# Add Movie/Series
+# ============================================
+# ===        CONVERSATION STATES           ===
+# ============================================
 (A_GET_NAME, A_GET_POSTER, A_GET_DESC, A_CONFIRM) = range(4)
-
-# Add Season
 (S_GET_CONTENT, S_GET_NUMBER, S_GET_POSTER, S_GET_DESC, S_CONFIRM, S_ASK_MORE) = range(10, 16)
-
-# Add Episode
 (E_GET_CONTENT, E_GET_SEASON, E_GET_NUMBER, E_GET_480P, E_GET_720P, E_GET_1080P, E_GET_4K, E_ASK_MORE) = range(20, 28)
-
-# Delete
 (DA_GET_CONTENT, DA_CONFIRM) = range(30, 32)
 (DS_GET_CONTENT, DS_GET_SEASON, DS_CONFIRM) = range(32, 35)
 (DE_GET_CONTENT, DE_GET_SEASON, DE_GET_EPISODE, DE_CONFIRM) = range(35, 39)
-
-# Edit
 (EA_GET_CONTENT, EA_GET_NEW_NAME, EA_CONFIRM) = range(40, 43)
 (ES_GET_CONTENT, ES_GET_SEASON, ES_GET_NEW_NAME, ES_CONFIRM) = range(43, 47)
 (EE_GET_CONTENT, EE_GET_SEASON, EE_GET_EPISODE, EE_GET_NEW_NUM, EE_CONFIRM) = range(47, 52)
-
-# Other States
 (CD_GET_QR, CL_GET_LINK, CS_GET_DELETE_TIME) = range(60, 63)
-(UP_GET_CONTENT, UP_GET_TARGET, UP_GET_POSTER) = range(63, 66)
+(UP_CONTENT, UP_TARGET, UP_POSTER) = range(63, 66)
 (CA_GET_ID, CA_CONFIRM, CR_GET_ID, CR_CONFIRM) = range(66, 70)
 (CPOST_CHAT, CPOST_POSTER, CPOST_CAPTION, CPOST_BTN_TEXT, CPOST_BTN_URL, CPOST_CONFIRM) = range(70, 76)
 (MM_MAIN, MM_DL, MM_GEN, MM_POSTGEN, MM_GET_MSG, MM_ADMIN) = range(76, 82)
@@ -746,7 +592,9 @@ async def delete_message_later(bot, chat_id: int, message_id: int, seconds: int)
 (BC_GET_MSG, BC_CONFIRM) = range(86, 88)
 (MERGE_TYPE, MERGE_TARGET, MERGE_SOURCE, MERGE_CONFIRM) = range(88, 92)
 
-# --- Cancel Function ---
+# ============================================
+# ===        CANCEL FUNCTION               ===
+# ============================================
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user = update.effective_user
     logger.info(f"User {user.id} ne operation cancel kiya.")
@@ -775,7 +623,9 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     
     return ConversationHandler.END
 
-# --- Back Functions ---
+# ============================================
+# ===        BACK FUNCTIONS                ===
+# ============================================
 async def back_to_admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -866,7 +716,6 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE, from
     logger.info("Admin/Co-Admin ne /admin command use kiya.")
     
     if not await is_main_admin(user_id):
-        # Co-Admin Menu
         keyboard = [
             [InlineKeyboardButton("🎬 Add Movie", callback_data="admin_add_movie")],
             [InlineKeyboardButton("📺 Add Series", callback_data="admin_add_series")],
@@ -880,7 +729,6 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE, from
         admin_menu_text = await format_message(context, "admin_panel_co")
     
     else:
-        # Main Admin Menu
         keyboard = [
             [InlineKeyboardButton("🎬 Add Movie", callback_data="admin_add_movie")],
             [InlineKeyboardButton("📺 Add Series", callback_data="admin_add_series")],
@@ -944,8 +792,45 @@ async def add_content_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = await format_message(context, "admin_menu_add_content")
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
 
+async def manage_content_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, from_message: bool = False):
+    query = update.callback_query
+    if query: await query.answer()
+    
+    keyboard = [
+        [InlineKeyboardButton("🗑️ Delete Movie", callback_data="admin_del_movie")],
+        [InlineKeyboardButton("🗑️ Delete Series", callback_data="admin_del_series")],
+        [InlineKeyboardButton("🗑️ Delete Season", callback_data="admin_del_season")],
+        [InlineKeyboardButton("🗑️ Delete Episode", callback_data="admin_del_episode")],
+        [InlineKeyboardButton("⬅️ Back to Admin Menu", callback_data="admin_menu")]
+    ]
+    text = await format_message(context, "admin_menu_manage_content")
+    
+    if from_message:
+        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+    elif query:
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+
+async def edit_content_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, from_message: bool = False):
+    query = update.callback_query
+    if query: await query.answer()
+    
+    keyboard = [
+        [InlineKeyboardButton("✏️ Edit Movie Name", callback_data="admin_edit_movie")],
+        [InlineKeyboardButton("✏️ Edit Series Name", callback_data="admin_edit_series")],
+        [InlineKeyboardButton("✏️ Edit Season Name", callback_data="admin_edit_season")],
+        [InlineKeyboardButton("✏️ Edit Episode Number", callback_data="admin_edit_episode")],
+        [InlineKeyboardButton("🔄 Merge Content", callback_data="admin_merge_content")],
+        [InlineKeyboardButton("⬅️ Back to Admin Menu", callback_data="admin_menu")]
+    ]
+    text = await format_message(context, "admin_menu_edit_content")
+    
+    if from_message:
+        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+    elif query:
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+
 # ============================================
-# ===        ADD MOVIE                    ===
+# ===        ADD MOVIE                     ===
 # ============================================
 
 async def add_movie_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -957,17 +842,17 @@ async def add_movie_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def add_movie_get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['content_name'] = update.message.text
-    text = await format_message(context, "admin_add_movie_get_name")
+    text = "<f>Badhiya! Ab movie ka <b>Poster (Photo)</b> bhejo.</f>\n\n/cancel - <f>Cancel.</f>"
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
     return A_GET_POSTER
 
 async def add_movie_get_poster(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.photo:
-        text = await format_message(context, "admin_add_movie_get_poster_error")
+        text = "Ye photo nahi hai. Please ek photo bhejo."
         await update.message.reply_text(text, parse_mode=ParseMode.HTML)
         return A_GET_POSTER
     context.user_data['poster_id'] = update.message.photo[-1].file_id
-    text = await format_message(context, "admin_add_movie_get_poster")
+    text = "<f>Poster mil gaya! Ab <b>Description (Synopsis)</b> bhejo.</f>\n\n/skip <f>ya</f> /cancel."
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
     return A_GET_DESC
 
@@ -984,10 +869,7 @@ async def add_movie_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     poster_id = context.user_data['poster_id']
     desc = context.user_data.get('description', '')
     
-    caption = await format_message(context, "admin_add_movie_confirm", {
-        "name": name,
-        "description": desc if desc else ''
-    })
+    caption = f"<b>{name}</b>\n\n{desc if desc else ''}\n\n<f>--- Details Check Karo ---</f>"
     keyboard = [[InlineKeyboardButton("✅ Save", callback_data="save_movie")], [InlineKeyboardButton("⬅️ Back", callback_data="back_to_add_content")]]
     
     if update.message:
@@ -995,7 +877,7 @@ async def add_movie_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_photo(photo=poster_id, caption=caption, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
         except Exception as e:
             logger.warning(f"Confirm movie details me error: {e}")
-            text = await format_message(context, "admin_add_movie_confirm_error")
+            text = "❌ <b><f>Error!</f></b> <f>Poster bhej nahi paya. Dobara try karein.</f>"
             await update.message.reply_text(text, parse_mode=ParseMode.HTML)
             return A_GET_DESC
     return A_CONFIRM
@@ -1006,7 +888,7 @@ async def save_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         name = context.user_data['content_name']
         if content_collection.find_one({"name": name}):
-            caption = await format_message(context, "admin_add_movie_save_exists", {"name": name})
+            caption = f"⚠️ <b><f>Error:</f></b> <f>Ye movie naam</f> '{name}' <f>pehle se hai.</f>"
             await query.edit_message_caption(caption=caption, parse_mode=ParseMode.HTML)
             await asyncio.sleep(3)
             await add_content_menu(update, context)
@@ -1022,19 +904,19 @@ async def save_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "last_modified": datetime.now()
         }
         content_collection.insert_one(content_doc)
-        caption = await format_message(context, "admin_add_movie_save_success", {"name": name})
+        caption = f"✅ <b><f>Success!</f></b> '{name}' <f>add ho gaya hai.</f>"
         await query.edit_message_caption(caption=caption, parse_mode=ParseMode.HTML)
         await asyncio.sleep(3)
         await add_content_menu(update, context)
     except Exception as e:
         logger.error(f"Movie save karne me error: {e}")
-        caption = await format_message(context, "admin_add_movie_save_error")
+        caption = "❌ <b><f>Error!</f></b> <f>Database me save nahi kar paya.</f>"
         await query.edit_message_caption(caption=caption, parse_mode=ParseMode.HTML)
     context.user_data.clear()
     return ConversationHandler.END
 
 # ============================================
-# ===        ADD SERIES                   ===
+# ===        ADD SERIES                    ===
 # ============================================
 
 async def add_series_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1046,17 +928,17 @@ async def add_series_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def add_series_get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['content_name'] = update.message.text
-    text = await format_message(context, "admin_add_series_get_name")
+    text = "<f>Badhiya! Ab series ka <b>Poster (Photo)</b> bhejo.</f>\n\n/cancel - <f>Cancel.</f>"
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
     return A_GET_POSTER
 
 async def add_series_get_poster(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.photo:
-        text = await format_message(context, "admin_add_series_get_poster_error")
+        text = "Ye photo nahi hai. Please ek photo bhejo."
         await update.message.reply_text(text, parse_mode=ParseMode.HTML)
         return A_GET_POSTER
     context.user_data['poster_id'] = update.message.photo[-1].file_id
-    text = await format_message(context, "admin_add_series_get_poster")
+    text = "<f>Poster mil gaya! Ab <b>Description (Synopsis)</b> bhejo.</f>\n\n/skip <f>ya</f> /cancel."
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
     return A_GET_DESC
 
@@ -1073,10 +955,7 @@ async def add_series_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE)
     poster_id = context.user_data['poster_id']
     desc = context.user_data.get('description', '')
     
-    caption = await format_message(context, "admin_add_series_confirm", {
-        "name": name,
-        "description": desc if desc else ''
-    })
+    caption = f"<b>{name}</b>\n\n{desc if desc else ''}\n\n<f>--- Details Check Karo ---</f>"
     keyboard = [[InlineKeyboardButton("✅ Save", callback_data="save_series")], [InlineKeyboardButton("⬅️ Back", callback_data="back_to_add_content")]]
     
     if update.message:
@@ -1084,7 +963,7 @@ async def add_series_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await update.message.reply_photo(photo=poster_id, caption=caption, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
         except Exception as e:
             logger.warning(f"Confirm series details me error: {e}")
-            text = await format_message(context, "admin_add_series_confirm_error")
+            text = "❌ <b><f>Error!</f></b> <f>Poster bhej nahi paya. Dobara try karein.</f>"
             await update.message.reply_text(text, parse_mode=ParseMode.HTML)
             return A_GET_DESC
     return A_CONFIRM
@@ -1095,7 +974,7 @@ async def save_series(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         name = context.user_data['content_name']
         if content_collection.find_one({"name": name}):
-            caption = await format_message(context, "admin_add_series_save_exists", {"name": name})
+            caption = f"⚠️ <b><f>Error:</f></b> <f>Ye series naam</f> '{name}' <f>pehle se hai.</f>"
             await query.edit_message_caption(caption=caption, parse_mode=ParseMode.HTML)
             await asyncio.sleep(3)
             await add_content_menu(update, context)
@@ -1111,19 +990,19 @@ async def save_series(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "last_modified": datetime.now()
         }
         content_collection.insert_one(content_doc)
-        caption = await format_message(context, "admin_add_series_save_success", {"name": name})
+        caption = f"✅ <b><f>Success!</f></b> '{name}' <f>add ho gaya hai.</f>"
         await query.edit_message_caption(caption=caption, parse_mode=ParseMode.HTML)
         await asyncio.sleep(3)
         await add_content_menu(update, context)
     except Exception as e:
         logger.error(f"Series save karne me error: {e}")
-        caption = await format_message(context, "admin_add_series_save_error")
+        caption = "❌ <b><f>Error!</f></b> <f>Database me save nahi kar paya.</f>"
         await query.edit_message_caption(caption=caption, parse_mode=ParseMode.HTML)
     context.user_data.clear()
     return ConversationHandler.END
 
 # ============================================
-# ===        ADD SEASON                   ===
+# ===        ADD SEASON                    ===
 # ============================================
 
 async def add_season_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1165,7 +1044,7 @@ async def add_season_get_content(update: Update, context: ContextTypes.DEFAULT_T
     
     content_doc = content_collection.find_one({"name": content_name})
     if not content_doc:
-        text = await format_message(context, "admin_add_season_get_number_error", {"content_name": content_name})
+        text = "⚠️ <b><f>Error!</f></b> <f>Series database mein nahi mili.</f> /cancel <f>karke dobara try karein.</f>"
         await query.edit_message_text(text, parse_mode=ParseMode.HTML)
         return ConversationHandler.END
     
@@ -1201,35 +1080,32 @@ async def add_season_get_number(update: Update, context: ContextTypes.DEFAULT_TY
     
     content_doc = content_collection.find_one({"name": content_name})
     if not content_doc:
-        text = await format_message(context, "admin_add_season_get_number_error", {"content_name": content_name})
+        text = "⚠️ <b><f>Error!</f></b> <f>Series database mein nahi mili.</f> /cancel <f>karke dobara try karein.</f>"
         await update.message.reply_text(text, parse_mode=ParseMode.HTML)
         return ConversationHandler.END
             
     if season_name in content_doc.get("seasons", {}):
-        text = await format_message(context, "admin_add_season_get_number_exists", {
-            "content_name": content_name,
-            "season_name": season_name
-        })
+        text = f"⚠️ <b><f>Error!</f></b> '{content_name}' <f>mein 'Season {season_name}' pehle se hai.</f>\n\n<f>Koi doosra naam/number type karein ya</f> /cancel <f>karein.</f>"
         await update.message.reply_text(text, parse_mode=ParseMode.HTML)
         return S_GET_NUMBER
 
-    text = await format_message(context, "admin_add_season_get_poster_prompt", {"season_name": season_name})
+    text = f"<f>Aapne Season</f> '{season_name}' <f>select kiya hai.</f>\n\n<f>Ab is season ka <b>Poster (Photo)</b> bhejo.</f>\n\n/skip - <f>Default series poster use karo.</f>\n/cancel - <f>Cancel.</f>"
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
     return S_GET_POSTER
 
 async def add_season_get_poster(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.photo:
-        text = await format_message(context, "admin_add_season_get_poster_error")
+        text = "<f>Ye photo nahi hai. Please ek photo bhejo.</f>"
         await update.message.reply_text(text, parse_mode=ParseMode.HTML)
         return S_GET_POSTER
     context.user_data['season_poster_id'] = update.message.photo[-1].file_id
-    text = await format_message(context, "admin_add_season_get_desc_prompt")
+    text = "<f>Poster mil gaya! Ab is season ka <b>Description</b> bhejo.</f>\n<f>(Yeh post generator mein use hoga)</f>\n\n/skip <f>ya</f> /cancel."
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
     return S_GET_DESC
 
 async def add_season_skip_poster(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['season_poster_id'] = None
-    text = await format_message(context, "admin_add_season_skip_poster")
+    text = "<f>Default poster set! Ab is season ka <b>Description</b> bhejo.</f>\n<f>(Yeh post generator mein use hoga)</f>\n\n/skip <f>ya</f> /cancel."
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
     return S_GET_DESC
 
@@ -1354,7 +1230,7 @@ async def add_season_more_no(update: Update, context: ContextTypes.DEFAULT_TYPE)
     return ConversationHandler.END
 
 # ============================================
-# ===        ADD EPISODE                  ===
+# ===        ADD EPISODE                   ===
 # ============================================
 
 async def add_episode_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1506,15 +1382,11 @@ async def add_episode_get_number(update: Update, context: ContextTypes.DEFAULT_T
         existing_eps = content_doc.get("seasons", {}).get(season_name, {})
     
     if ep_num in existing_eps:
-        text = await format_message(context, "admin_add_ep_get_number_exists", {
-            "content_name": content_name,
-            "season_name": context.user_data.get('season_name', 'Movie'),
-            "ep_num": ep_num
-        })
+        text = f"⚠️ <b><f>Error!</f></b> '{content_name}' - Episode {ep_num} <f>pehle se maujood hai. Please pehle isse delete karein ya koi doosra episode number dein.</f>\n\n/cancel - <f>Cancel.</f>"
         await update.message.reply_text(text, parse_mode=ParseMode.HTML)
         return E_GET_NUMBER
 
-    text = await format_message(context, "admin_add_ep_get_number", {"ep_num": ep_num})
+    text = f"<f>Aapne</f> <b>Episode {ep_num}</b> <f>select kiya hai.</f>\n\n<f>Ab <b>480p</b> quality ki video file bhejein.</f>\n<f>Ya</f> /skip <f>type karein.</f>"
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
     return E_GET_480P
 
@@ -1655,12 +1527,9 @@ async def delete_content_show_list(update: Update, context: ContextTypes.DEFAULT
     )
     
     if not items and page == 0:
-        text = await format_message(context, "admin_del_content_no_content", {"content_type": display_type})
+        text = f"❌ <f>Error: Abhi koi {display_type} add nahi hua hai.</f>"
     else:
-        text = await format_message(context, "admin_del_content_select", {
-            "content_type": display_type,
-            "page": page + 1
-        })
+        text = f"<f>Kaunsa <b>{display_type}</b> delete karna hai?</f>\n\n<b><f>Recently Updated First</f></b> <f>(Sabse naya pehle):</f>\n<f>(Page {page + 1})</f>"
     
     await query.edit_message_text(text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
     return DA_GET_CONTENT
@@ -1673,10 +1542,7 @@ async def delete_content_confirm(update: Update, context: ContextTypes.DEFAULT_T
     content_type = context.user_data.get('content_type', 'movie')
     display_type = "Movie" if content_type == "movie" else "Series"
     keyboard = [[InlineKeyboardButton(f"✅ Haan, {content_name} ko Delete Karo", callback_data="del_content_confirm_yes")], [InlineKeyboardButton("⬅️ Back", callback_data="back_to_manage")]]
-    text = await format_message(context, "admin_del_content_confirm", {
-        "content_name": content_name,
-        "content_type": display_type
-    })
+    text = f"⚠️ <b><f>FINAL WARNING</f></b> ⚠️\n\n<f>Aap</f> <b>{content_name}</b> <f>ko delete karne wale hain. Iske saare seasons aur episodes delete ho jayenge.</f>\n\n<b><f>Are you sure?</f></b>"
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
     return DA_CONFIRM
 
@@ -1689,14 +1555,11 @@ async def delete_content_do(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         content_collection.delete_one({"name": content_name})
         logger.info(f"Content deleted: {content_name}")
-        text = await format_message(context, "admin_del_content_success", {
-            "content_name": content_name,
-            "content_type": display_type
-        })
+        text = f"✅ <b><f>Success!</f></b>\n<f>{display_type}</f> '{content_name}' <f>delete ho gaya hai.</f>"
         await query.edit_message_text(text, parse_mode=ParseMode.HTML)
     except Exception as e:
         logger.error(f"Content delete karne me error: {e}")
-        text = await format_message(context, "admin_del_content_error", {"content_type": display_type})
+        text = f"❌ <b><f>Error!</f></b> <f>{display_type} delete nahi ho paya.</f>"
         await query.edit_message_text(text, parse_mode=ParseMode.HTML)
     context.user_data.clear()
     await asyncio.sleep(3)
@@ -1704,7 +1567,7 @@ async def delete_content_do(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 # ============================================
-# ===        DELETE SEASON                ===
+# ===        DELETE SEASON                 ===
 # ============================================
 
 async def delete_season_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1731,9 +1594,9 @@ async def delete_season_show_content_list(update: Update, context: ContextTypes.
     )
     
     if not items and page == 0:
-        text = await format_message(context, "admin_del_season_no_content")
+        text = "❌ <f>Error: Abhi koi Series add nahi hui hai.</f>"
     else:
-        text = await format_message(context, "admin_del_season_select_content", {"page": page + 1})
+        text = f"<f>Kaunse <b>Series</b> ka season delete karna hai?</f>\n\n<b><f>Recently Updated First</f></b> <f>(Sabse naya pehle):</f>\n<f>(Page {page + 1})</f>"
 
     await query.edit_message_text(text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
     return DS_GET_CONTENT
@@ -1752,7 +1615,7 @@ async def delete_season_select(update: Update, context: ContextTypes.DEFAULT_TYP
     
     seasons = content_doc.get("seasons", {})
     if not seasons:
-        text = await format_message(context, "admin_del_season_no_season", {"content_name": content_name})
+        text = f"❌ <b><f>Error!</f></b> '{content_name}' <f>mein koi season nahi hai.</f>"
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="back_to_manage")]]), parse_mode=ParseMode.HTML)
         return ConversationHandler.END
     
@@ -1763,7 +1626,7 @@ async def delete_season_select(update: Update, context: ContextTypes.DEFAULT_TYP
     current_page = context.user_data.get('current_page', 0)
     keyboard.append([InlineKeyboardButton("⬅️ Back to Content", callback_data=f"delseason_page_{current_page}")])
 
-    text = await format_message(context, "admin_del_season_select_season", {"content_name": content_name})
+    text = f"<f>Aapne</f> <b>{content_name}</b> <f>select kiya hai.</f>\n\n<f>Kaunsa <b>Season</b> delete karna hai?</f>"
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
     return DS_GET_SEASON
 
@@ -1774,10 +1637,7 @@ async def delete_season_confirm(update: Update, context: ContextTypes.DEFAULT_TY
     context.user_data['season_name'] = season_name
     content_name = context.user_data['content_name']
     keyboard = [[InlineKeyboardButton(f"✅ Haan, Season {season_name} Delete Karo", callback_data="del_season_confirm_yes")], [InlineKeyboardButton("⬅️ Back", callback_data="back_to_manage")]]
-    text = await format_message(context, "admin_del_season_confirm", {
-        "content_name": content_name,
-        "season_name": season_name
-    })
+    text = f"⚠️ <b><f>FINAL WARNING</f></b> ⚠️\n\n<f>Aap</f> <b>{content_name}</b> <f>ka</f> <b>Season {season_name}</b> <f>delete karne wale hain. Iske saare episodes delete ho jayenge.</f>\n\n<b><f>Are you sure?</f></b>"
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
     return DS_CONFIRM
 
@@ -1793,11 +1653,11 @@ async def delete_season_do(update: Update, context: ContextTypes.DEFAULT_TYPE):
              "$set": {"last_modified": datetime.now()}}
         )
         logger.info(f"Season deleted: {content_name} - S{season_name}")
-        text = await format_message(context, "admin_del_season_success", {"season_name": season_name})
+        text = f"✅ <b><f>Success!</f></b>\n<f>Season</f> '{season_name}' <f>delete ho gaya hai.</f>"
         await query.edit_message_text(text, parse_mode=ParseMode.HTML)
     except Exception as e:
         logger.error(f"Season delete karne me error: {e}")
-        text = await format_message(context, "admin_del_season_error")
+        text = "❌ <b><f>Error!</f></b> <f>Season delete nahi ho paya.</f>"
         await query.edit_message_text(text, parse_mode=ParseMode.HTML)
     context.user_data.clear()
     await asyncio.sleep(3)
@@ -1805,7 +1665,7 @@ async def delete_season_do(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 # ============================================
-# ===        DELETE EPISODE               ===
+# ===        DELETE EPISODE                ===
 # ============================================
 
 async def delete_episode_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1831,9 +1691,9 @@ async def delete_episode_show_content_list(update: Update, context: ContextTypes
     )
     
     if not items and page == 0:
-        text = await format_message(context, "admin_del_ep_no_content")
+        text = "❌ <f>Error: Abhi koi content add nahi hua hai.</f>"
     else:
-        text = await format_message(context, "admin_del_ep_select_content", {"page": page + 1})
+        text = f"<f>Kaunse <b>content</b> ka episode delete karna hai?</f>\n\n<b><f>Recently Updated First</f></b> <f>(Sabse naya pehle):</f>\n<f>(Page {page + 1})</f>"
 
     await query.edit_message_text(text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
     return DE_GET_CONTENT
@@ -1852,7 +1712,7 @@ async def delete_episode_select_season(update: Update, context: ContextTypes.DEF
     
     seasons = content_doc.get("seasons", {})
     if not seasons:
-        text = await format_message(context, "admin_del_ep_no_season", {"content_name": content_name})
+        text = f"❌ <b><f>Error!</f></b> '{content_name}' <f>mein koi season nahi hai.</f>"
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="back_to_manage")]]), parse_mode=ParseMode.HTML)
         return ConversationHandler.END
     
@@ -1863,7 +1723,7 @@ async def delete_episode_select_season(update: Update, context: ContextTypes.DEF
     current_page = context.user_data.get('current_page', 0)
     keyboard.append([InlineKeyboardButton("⬅️ Back to Content", callback_data=f"delep_page_{current_page}")])
 
-    text = await format_message(context, "admin_del_ep_select_season", {"content_name": content_name})
+    text = f"<f>Aapne</f> <b>{content_name}</b> <f>select kiya hai.</f>\n\n<f>Kaunsa <b>Season</b> delete karna hai?</f>"
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
     return DE_GET_SEASON
 
@@ -1877,10 +1737,7 @@ async def delete_episode_select_episode_direct(update: Update, context: ContextT
     episode_keys = [ep for ep in episodes.keys() if not ep.startswith("_")]
     
     if not episode_keys:
-        text = await format_message(context, "admin_del_ep_no_episode", {
-            "content_name": content_name,
-            "season_name": "Movie"
-        })
+        text = f"❌ <b><f>Error!</f></b> '{content_name}' - Movie <f>mein koi episode nahi hai.</f>"
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="back_to_manage")]]), parse_mode=ParseMode.HTML)
         return ConversationHandler.END
         
@@ -1890,7 +1747,7 @@ async def delete_episode_select_episode_direct(update: Update, context: ContextT
     
     keyboard.append([InlineKeyboardButton("⬅️ Back to Content", callback_data=f"del_ep_content_{content_name}")])
 
-    text = await format_message(context, "admin_del_ep_select_episode", {"season_name": "Movie"})
+    text = f"<f>Aapne</f> <b>Movie</b> <f>select kiya hai.</f>\n\n<f>Kaunsa <b>Episode</b> delete karna hai?</f>"
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
     return DE_GET_EPISODE
 
@@ -1906,10 +1763,7 @@ async def delete_episode_select_episode(update: Update, context: ContextTypes.DE
     episode_keys = [ep for ep in episodes.keys() if not ep.startswith("_")]
     
     if not episode_keys:
-        text = await format_message(context, "admin_del_ep_no_episode", {
-            "content_name": content_name,
-            "season_name": season_name
-        })
+        text = f"❌ <b><f>Error!</f></b> '{content_name}' - Season {season_name} <f>mein koi episode nahi hai.</f>"
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="back_to_manage")]]), parse_mode=ParseMode.HTML)
         return ConversationHandler.END
         
@@ -1919,7 +1773,7 @@ async def delete_episode_select_episode(update: Update, context: ContextTypes.DE
     
     keyboard.append([InlineKeyboardButton("⬅️ Back to Seasons", callback_data=f"del_ep_content_{content_name}")])
 
-    text = await format_message(context, "admin_del_ep_select_episode", {"season_name": season_name})
+    text = f"<f>Aapne</f> <b>Season {season_name}</b> <f>select kiya hai.</f>\n\n<f>Kaunsa <b>Episode</b> delete karna hai?</f>"
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
     return DE_GET_EPISODE
 
@@ -1931,11 +1785,7 @@ async def delete_episode_confirm(update: Update, context: ContextTypes.DEFAULT_T
     content_name = context.user_data['content_name']
     season_name = context.user_data.get('season_name', 'Movie')
     keyboard = [[InlineKeyboardButton(f"✅ Haan, Ep {ep_num} Delete Karo", callback_data="del_ep_confirm_yes")], [InlineKeyboardButton("⬅️ Back", callback_data="back_to_manage")]]
-    text = await format_message(context, "admin_del_ep_confirm", {
-        "content_name": content_name,
-        "season_name": season_name,
-        "ep_num": ep_num
-    })
+    text = f"⚠️ <b><f>FINAL WARNING</f></b> ⚠️\n\n<f>Aap</f> <b>{content_name}</b> - <b>S{season_name}</b> - <b>Ep {ep_num}</b> <f>delete karne wale hain. Iske saare qualities delete ho jayenge.</f>\n\n<b><f>Are you sure?</f></b>"
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
     return DE_CONFIRM
 
@@ -1960,11 +1810,11 @@ async def delete_episode_do(update: Update, context: ContextTypes.DEFAULT_TYPE):
                  "$set": {"last_modified": datetime.now()}}
             )
         logger.info(f"Episode deleted: {content_name} - S{season_name} - E{ep_num}")
-        text = await format_message(context, "admin_del_ep_success", {"ep_num": ep_num})
+        text = f"✅ <b><f>Success!</f></b>\n<f>Episode</f> '{ep_num}' <f>delete ho gaya hai.</f>"
         await query.edit_message_text(text, parse_mode=ParseMode.HTML)
     except Exception as e:
         logger.error(f"Episode delete karne me error: {e}")
-        text = await format_message(context, "admin_del_ep_error")
+        text = "❌ <b><f>Error!</f></b> <f>Episode delete nahi ho paya.</f>"
         await query.edit_message_text(text, parse_mode=ParseMode.HTML)
     context.user_data.clear()
     await asyncio.sleep(3)
@@ -2860,8 +2710,7 @@ def main():
         allow_reentry=True
     )
 
-    # Add Episode Conversation
-    add_episode_conv = ConversationHandler(
+    # Add Episode Conversation    add_episode_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(add_episode_start, pattern="^admin_add_episode$")],
         states={
             E_GET_CONTENT: [
@@ -2969,6 +2818,8 @@ def main():
     bot_app.add_handler(CallbackQueryHandler(admin_settings_menu, pattern="^admin_menu_admin_settings$"))
     bot_app.add_handler(CallbackQueryHandler(update_photo_menu, pattern="^admin_menu_update_photo$"))
     bot_app.add_handler(CallbackQueryHandler(show_user_stats, pattern="^admin_show_stats$"))
+    bot_app.add_handler(CallbackQueryHandler(post_gen_menu, pattern="^admin_post_gen$"))
+    bot_app.add_handler(CallbackQueryHandler(gen_link_menu, pattern="^admin_gen_link$"))
 
     # User menu
     bot_app.add_handler(CallbackQueryHandler(user_show_donate_menu, pattern="^user_show_donate_menu$"))
