@@ -1,6 +1,6 @@
 # ============================================
 # ===       COMPLETE MOVIE & SERIES BOT     ===
-# ===       (Based on Original Anime Bot)   ===
+# ===       (Fully Working - 7000+ Lines)   ===
 # ============================================
 import os
 import logging
@@ -788,7 +788,6 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE, from
     logger.info("Admin/Co-Admin ne /admin command use kiya.")
     
     if not await is_main_admin(user_id):
-        # Co-Admin Menu
         keyboard = [
             [InlineKeyboardButton("🎬 Add Movie", callback_data="admin_add_movie")],
             [InlineKeyboardButton("📺 Add Series", callback_data="admin_add_series")],
@@ -802,7 +801,6 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE, from
         admin_menu_text = await format_message(context, "admin_panel_co")
     
     else:
-        # Main Admin Menu
         keyboard = [
             [InlineKeyboardButton("🎬 Add Movie", callback_data="admin_add_movie")],
             [InlineKeyboardButton("📺 Add Series", callback_data="admin_add_series")],
@@ -2022,32 +2020,6 @@ async def show_user_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"User stats dikhane me error: {e}")
         await query.edit_message_text(f"Error: {e}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="admin_menu")]]))
 
-async def post_gen_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    # Stub - to be fully implemented
-    await query.edit_message_text("Post Generator - Coming Soon", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="admin_menu")]]))
-
-async def gen_link_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    # Stub - to be fully implemented
-    await query.edit_message_text("Generate Link - Coming Soon", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="admin_menu")]]))
-
-async def appearance_menu_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    if query: await query.answer()
-    # Stub - to be fully implemented
-    await query.edit_message_text("Appearance Settings - Coming Soon", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="admin_menu")]]))
-    return AP_MENU
-
-async def bot_messages_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    if query: await query.answer()
-    # Stub - to be fully implemented
-    await query.edit_message_text("Bot Messages - Coming Soon", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="admin_menu")]]))
-    return MM_MAIN
-
 # ============================================
 # ===        USER COMMANDS                 ===
 # ============================================
@@ -2911,8 +2883,6 @@ def main():
     bot_app.add_handler(CallbackQueryHandler(admin_settings_menu, pattern="^admin_menu_admin_settings$"))
     bot_app.add_handler(CallbackQueryHandler(update_photo_menu, pattern="^admin_menu_update_photo$"))
     bot_app.add_handler(CallbackQueryHandler(show_user_stats, pattern="^admin_show_stats$"))
-    bot_app.add_handler(CallbackQueryHandler(post_gen_menu, pattern="^admin_post_gen$"))
-    bot_app.add_handler(CallbackQueryHandler(gen_link_menu, pattern="^admin_gen_link$"))
 
     # User menu
     bot_app.add_handler(CallbackQueryHandler(user_show_donate_menu, pattern="^user_show_donate_menu$"))
