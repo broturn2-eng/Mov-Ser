@@ -1,6 +1,7 @@
 # ============================================
-# ===       COMPLETE MOVIE & SERIES BOT     ===
-# ===       (Fully Working - 7000+ Lines)   ===
+# ===       COMPLETE WORKING BOT (v36)     ===
+# ===       MOVIES & SERIES SUPPORT         ===
+# ===  (Based on Original Working Anime Bot) ===
 # ============================================
 import os
 import logging
@@ -329,6 +330,7 @@ async def get_default_messages():
         "admin_add_movie_get_poster_error": "Ye photo nahi hai. Please ek photo bhejo.",
         "admin_add_movie_get_poster": "<f>Poster mil gaya! Ab <b>Description (Synopsis)</b> bhejo.</f>\n\n/skip <f>ya</f> /cancel.",
         "admin_add_movie_confirm": "<b>{name}</b>\n\n{description}\n\n<f>--- Details Check Karo ---</f>",
+        "admin_add_movie_confirm_error": "❌ <f>Error: Poster bhej nahi paya. Dobara try karein ya</f> /cancel.",
         "admin_add_movie_save_exists": "⚠️ <b><f>Error:</f></b> <f>Ye movie naam</f> '{name}' <f>pehle se hai.</f>",
         "admin_add_movie_save_success": "✅ <b><f>Success!</f></b> '{name}' <f>add ho gaya hai.</f>",
         "admin_add_movie_save_error": "❌ <b><f>Error!</f></b> <f>Database me save nahi kar paya.</f>",
@@ -339,27 +341,28 @@ async def get_default_messages():
         "admin_add_series_get_poster_error": "Ye photo nahi hai. Please ek photo bhejo.",
         "admin_add_series_get_poster": "<f>Poster mil gaya! Ab <b>Description (Synopsis)</b> bhejo.</f>\n\n/skip <f>ya</f> /cancel.",
         "admin_add_series_confirm": "<b>{name}</b>\n\n{description}\n\n<f>--- Details Check Karo ---</f>",
+        "admin_add_series_confirm_error": "❌ <f>Error: Poster bhej nahi paya. Dobara try karein ya</f> /cancel.",
         "admin_add_series_save_exists": "⚠️ <b><f>Error:</f></b> <f>Ye series naam</f> '{name}' <f>pehle se hai.</f>",
         "admin_add_series_save_success": "✅ <b><f>Success!</f></b> '{name}' <f>add ho gaya hai.</f>",
         "admin_add_series_save_error": "❌ <b><f>Error!</f></b> <f>Database me save nahi kar paya.</f>",
 
         # === Admin: Add Season ===
-        "admin_add_season_select_series": "<f>Aap kis series mein season add karna chahte hain?</f>\n\n<b><f>Recently Updated First</f></b> <f>(Sabse naya pehle):</f>\n<f>(Page {page})</f>",
-        "admin_add_season_no_series": "❌ <f>Error: Abhi koi series add nahi hui hai. Pehle 'Add Series' se add karein.</f>",
-        "admin_add_season_get_series": "<f>Aapne</f> <b>{series_name}</b> <f>select kiya hai.</f>\n\n<f>Ab is season ka <b>Number ya Naam</b> bhejo.</f>\n<f>(Jaise: 1, 2, 3...)</f>\n\n/cancel - <f>Cancel.</f>",
-        "admin_add_season_get_series_with_last": "<f>Aapne</f> <b>{series_name}</b> <f>select kiya hai.</f>\n<f>Last added season:</f> <b>{last_season_name}</b>\n\n<f>Ab is season ka <b>Number ya Naam</b> bhejo.</f>\n<f>(Jaise: 1, 2, 3...)</f>\n\n/cancel - <f>Cancel.</f>",
-        "admin_add_season_get_series_no_last": "<f>Aapne</f> <b>{series_name}</b> <f>select kiya hai.</f>\n<f>Is series mein abhi koi season nahi hai.</f>\n\n<f>Ab is season ka <b>Number ya Naam</b> bhejo.</f>\n<f>(Jaise: 1, 2, 3...)</f>\n\n/cancel - <f>Cancel.</f>",
-        "admin_add_season_get_number_error": "⚠️ <b><f>Error!</f></b> <f>Series</f> '{series_name}' <f>database mein nahi mili.</f> /cancel <f>karke dobara try karein.</f>",
-        "admin_add_season_get_number_exists": "⚠️ <b><f>Error!</f></b> '{series_name}' <f>mein 'Season {season_name}' pehle se hai.</f>\n\n<f>Koi doosra naam/number type karein ya</f> /cancel <f>karein.</f>",
+        "admin_add_season_select_content": "<f>Aap kis series mein season add karna chahte hain?</f>\n\n<b><f>Recently Updated First</f></b> <f>(Sabse naya pehle):</f>\n<f>(Page {page})</f>",
+        "admin_add_season_no_content": "❌ <f>Error: Abhi koi series add nahi hui hai. Pehle 'Add Series' se add karein.</f>",
+        "admin_add_season_get_content": "<f>Aapne</f> <b>{content_name}</b> <f>select kiya hai.</f>\n\n<f>Ab is season ka <b>Number ya Naam</b> bhejo.</f>\n<f>(Jaise: 1, 2, 3...)</f>\n\n/cancel - <f>Cancel.</f>",
+        "admin_add_season_get_content_with_last": "<f>Aapne</f> <b>{content_name}</b> <f>select kiya hai.</f>\n<f>Last added season:</f> <b>{last_season_name}</b>\n\n<f>Ab is season ka <b>Number ya Naam</b> bhejo.</f>\n<f>(Jaise: 1, 2, 3...)</f>\n\n/cancel - <f>Cancel.</f>",
+        "admin_add_season_get_content_no_last": "<f>Aapne</f> <b>{content_name}</b> <f>select kiya hai.</f>\n<f>Is series mein abhi koi season nahi hai.</f>\n\n<f>Ab is season ka <b>Number ya Naam</b> bhejo.</f>\n<f>(Jaise: 1, 2, 3...)</f>\n\n/cancel - <f>Cancel.</f>",
+        "admin_add_season_get_number_error": "⚠️ <b><f>Error!</f></b> <f>Series</f> '{content_name}' <f>database mein nahi mili.</f> /cancel <f>karke dobara try karein.</f>",
+        "admin_add_season_get_number_exists": "⚠️ <b><f>Error!</f></b> '{content_name}' <f>mein 'Season {season_name}' pehle se hai.</f>\n\n<f>Koi doosra naam/number type karein ya</f> /cancel <f>karein.</f>",
         "admin_add_season_get_poster_prompt": "<f>Aapne Season</f> '{season_name}' <f>select kiya hai.</f>\n\n<f>Ab is season ka <b>Poster (Photo)</b> bhejo.</f>\n\n/skip - <f>Default series poster use karo.</f>\n/cancel - <f>Cancel.</f>",
         "admin_add_season_get_poster_error": "<f>Ye photo nahi hai. Please ek photo bhejo.</f>",
         "admin_add_season_get_desc_prompt": "<f>Poster mil gaya! Ab is season ka <b>Description</b> bhejo.</f>\n<f>(Yeh post generator mein use hoga)</f>\n\n/skip <f>ya</f> /cancel.",
         "admin_add_season_skip_poster": "<f>Default poster set! Ab is season ka <b>Description</b> bhejo.</f>\n<f>(Yeh post generator mein use hoga)</f>\n\n/skip <f>ya</f> /cancel.",
-        "admin_add_season_confirm": "<b><f>Confirm Karo:</f></b>\n<f>Series:</f> <b>{series_name}</b>\n<f>Naya Season:</f> <b>{season_name}</b>\n<f>Description:</f> {season_desc}\n\n<f>Save kar doon?</f>",
-        "admin_add_season_save_success": "✅ <b><f>Success!</f></b>\n<b>{series_name}</b> <f>mein</f> <b>Season {season_name}</b> <f>add ho gaya hai.</f>",
+        "admin_add_season_confirm": "<b><f>Confirm Karo:</f></b>\n<f>Series:</f> <b>{content_name}</b>\n<f>Naya Season:</f> <b>{season_name}</b>\n<f>Description:</f> {season_desc}\n\n<f>Save kar doon?</f>",
+        "admin_add_season_save_success": "✅ <b><f>Success!</f></b>\n<b>{content_name}</b> <f>mein</f> <b>Season {season_name}</b> <f>add ho gaya hai.</f>",
         "admin_add_season_save_error": "❌ <b><f>Error!</f></b> <f>Database me save nahi kar paya.</f>",
-        "admin_add_season_ask_more": "✅ <f>Season</f> <b>{season_name}</b> <f>save ho gaya!</f>\n\n<f>Aap</f> <b>{series_name}</b> <f>mein aur season add karna chahte hain?</f>",
-        "admin_add_season_next_prompt": "<f>Last Season:</f> <b>{season_name}</b>. <f>Series:</f> <b>{series_name}</b>\n\n<f>Ab agla <b>Season Number/Naam</b> bhejo.</f>\n\n/cancel - <f>Cancel.</f>",
+        "admin_add_season_ask_more": "✅ <f>Season</f> <b>{season_name}</b> <f>save ho gaya!</f>\n\n<f>Aap</f> <b>{content_name}</b> <f>mein aur season add karna chahte hain?</f>",
+        "admin_add_season_next_prompt": "<f>Last Season:</f> <b>{season_name}</b>. <f>Series:</f> <b>{content_name}</b>\n\n<f>Ab agla <b>Season Number/Naam</b> bhejo.</f>\n\n/cancel - <f>Cancel.</f>",
         
         # === Admin: Add Episode ===
         "admin_add_ep_select_content": "<f>Aap kis content mein episode add karna chahte hain?</f>\n\n<b><f>Recently Updated First</f></b> <f>(Sabse naya pehle):</f>\n<f>(Page {page})</f>",
@@ -373,11 +376,11 @@ async def get_default_messages():
         "admin_add_ep_helper_invalid": "<f>Ye video file nahi hai. Please dobara video file bhejein ya</f> /skip <f>karein.</f>",
         "admin_add_ep_helper_success": "✅ <b>{quality}</b> <f>save ho gaya.</f>",
         "admin_add_ep_helper_error": "❌ <b><f>Error!</f></b> {quality} <f>save nahi kar paya. Logs check karein.</f>",
-        "admin_add_ep_get_720p": "<f>Ab <b>720p</b> quality ki video file bhejein.</f>\n<f>Ya</f> /skip <f>type karein.</f>",
+        "admin_add_ep_get_480p": "<f>Ab <b>720p</b> quality ki video file bhejein.</f>\n<f>Ya</f> /skip <f>type karein.</f>",
         "admin_add_ep_skip_480p": "✅ <f>480p skip kar diya.</f>\n\n<f>Ab <b>720p</b> quality ki video file bhejein.</f>\n<f>Ya</f> /skip <f>type karein.</f>",
-        "admin_add_ep_get_1080p": "<f>Ab <b>1080p</b> quality ki video file bhejein.</f>\n<f>Ya</f> /skip <f>type karein.</f>",
+        "admin_add_ep_get_720p": "<f>Ab <b>1080p</b> quality ki video file bhejein.</f>\n<f>Ya</f> /skip <f>type karein.</f>",
         "admin_add_ep_skip_720p": "✅ <f>720p skip kar diya.</f>\n\n<f>Ab <b>1080p</b> quality ki video file bhejein.</f>\n<f>Ya</f> /skip <f>type karein.</f>",
-        "admin_add_ep_get_4k": "<f>Ab <b>4K</b> quality ki video file bhejein.</f>\n<f>Ya</f> /skip <f>type karein.</f>",
+        "admin_add_ep_get_1080p": "<f>Ab <b>4K</b> quality ki video file bhejein.</f>\n<f>Ya</f> /skip <f>type karein.</f>",
         "admin_add_ep_skip_1080p": "✅ <f>1080p skip kar diya.</f>\n\n<f>Ab <b>4K</b> quality ki video file bhejein.</f>\n<f>Ya</f> /skip <f>type karein.</f>",
         "admin_add_ep_get_4k_success": "✅ <b><f>Success!</f></b> <f>Saari qualities save ho gayi hain.</f>",
         "admin_add_ep_skip_4k": "✅ <f>4K skip kar diya.</f>\n\n✅ <b><f>Success!</f></b> <f>Episode save ho gaya hai.</f>",
@@ -439,15 +442,76 @@ async def get_default_messages():
         "admin_gen_link_success": "✅ <b><f>Link Generated!</f></b>\n\n<b><f>Target:</f></b> {title}\n<b><f>Link:</f></b>\n<code>{final_link}</code>\n\n<f>Is link ko copy karke kahin bhi paste karein.</f>",
         "admin_gen_link_error": "❌ <b><f>Error!</f></b> <f>Link generate nahi ho paya. Logs check karein.</f>",
 
-        # === Admin: Merge Content ===
-        "admin_menu_merge_content": "🔄 <b><f>Merge Content</f></b> 🔄\n\n<f>Yeh feature do alag-alag content entries ko ek mein combine kar dega.</f>",
-        "admin_merge_select_type": "<f>Kis type ka content merge karna hai?</f>",
-        "admin_merge_select_target": "1️⃣ <f>Pehle, <b>TARGET</b> {content_type} select karein.</f>\n\n<f>(Yeh woh content hai jiske ANDAR aap doosre seasons daalna chahte hain.)</f>\n<f>(Page {page})</f>",
-        "admin_merge_select_source": "2️⃣ <f>Ab, <b>SOURCE</b> {content_type} select karein.</f>\n\n<f>(Yeh woh content hai jisko delete karke iske saare seasons <b>{target_name}</b> mein move kar diye jayenge.)</f>\n<f>(Page {page})</f>",
-        "admin_merge_self_merge_error": "❌ <f>Error! Aap ek content ko khud se merge nahi kar sakte. Koi doosra content chunein.</f>",
-        "admin_merge_confirm": "⚠️ <b><f>FINAL CONFIRMATION</f></b> ⚠️\n\n<f>Aap <b>SOURCE</b> content:</f>\n<code>{source_name}</code>\n<f>ke saare seasons ko <b>TARGET</b> content:</f>\n<code>{target_name}</code>\n<f>mein move kar rahe hain.</f>\n\n<f>Total</f> <b>{count}</b> <f>seasons move honge.</f>\n<f>Source content</f> (<code>{source_name}</code>) <f>delete ho jayega.</f>\n\n<b><f>Are you sure?</f></b>",
-        "admin_merge_success": "✅ <b><f>Success!</f></b>\n<f>Total</f> <b>{count}</b> <f>seasons ko</f> <code>{source_name}</code> <f>se</f> <code>{target_name}</code> <f>mein move kar diya gaya hai.</f>\n<f>Source content delete ho gaya hai.</f>",
-        "admin_merge_error": "❌ <b><f>Error!</f></b> <f>Merge nahi ho paya. Dono content check karein. Error:</f> {e}",
+        # === Admin: Delete Content ===
+        "admin_del_content_select": "<f>Kaunsa <b>{content_type}</b> delete karna hai?</f>\n\n<b><f>Recently Updated First</f></b> <f>(Sabse naya pehle):</f>\n<f>(Page {page})</f>",
+        "admin_del_content_no_content": "❌ <f>Error: Abhi koi {content_type} add nahi hua hai.</f>",
+        "admin_del_content_confirm": "⚠️ <b><f>FINAL WARNING</f></b> ⚠️\n\n<f>Aap</f> <b>{content_name}</b> <f>ko delete karne wale hain. Iske saare seasons aur episodes delete ho jayenge.</f>\n\n<b><f>Are you sure?</f></b>",
+        "admin_del_content_success": "✅ <b><f>Success!</f></b>\n<f>{content_type}</f> '{content_name}' <f>delete ho gaya hai.</f>",
+        "admin_del_content_error": "❌ <b><f>Error!</f></b> <f>{content_type} delete nahi ho paya.</f>",
+
+        # === Admin: Delete Season ===
+        "admin_del_season_select_content": "<f>Kaunse <b>Series</b> ka season delete karna hai?</f>\n\n<b><f>Recently Updated First</f></b> <f>(Sabse naya pehle):</f>\n<f>(Page {page})</f>",
+        "admin_del_season_no_content": "❌ <f>Error: Abhi koi Series add nahi hui hai.</f>",
+        "admin_del_season_no_season": "❌ <b><f>Error!</f></b> '{content_name}' <f>mein koi season nahi hai.</f>",
+        "admin_del_season_select_season": "<f>Aapne</f> <b>{content_name}</b> <f>select kiya hai.</f>\n\n<f>Kaunsa <b>Season</b> delete karna hai?</f>",
+        "admin_del_season_confirm": "⚠️ <b><f>FINAL WARNING</f></b> ⚠️\n\n<f>Aap</f> <b>{content_name}</b> <f>ka</f> <b>Season {season_name}</b> <f>delete karne wale hain. Iske saare episodes delete ho jayenge.</f>\n\n<b><f>Are you sure?</f></b>",
+        "admin_del_season_success": "✅ <b><f>Success!</f></b>\n<f>Season</f> '{season_name}' <f>delete ho gaya hai.</f>",
+        "admin_del_season_error": "❌ <b><f>Error!</f></b> <f>Season delete nahi ho paya.</f>",
+
+        # === Admin: Delete Episode ===
+        "admin_del_ep_select_content": "<f>Kaunse <b>content</b> ka episode delete karna hai?</f>\n\n<b><f>Recently Updated First</f></b> <f>(Sabse naya pehle):</f>\n<f>(Page {page})</f>",
+        "admin_del_ep_no_content": "❌ <f>Error: Abhi koi content add nahi hua hai.</f>",
+        "admin_del_ep_no_season": "❌ <b><f>Error!</f></b> '{content_name}' <f>mein koi season nahi hai.</f>",
+        "admin_del_ep_select_season": "<f>Aapne</f> <b>{content_name}</b> <f>select kiya hai.</f>\n\n<f>Kaunsa <b>Season</b> delete karna hai?</f>",
+        "admin_del_ep_no_episode": "❌ <b><f>Error!</f></b> '{content_name}' - Season {season_name} <f>mein koi episode nahi hai.</f>",
+        "admin_del_ep_select_episode": "<f>Aapne</f> <b>Season {season_name}</b> <f>select kiya hai.</f>\n\n<f>Kaunsa <b>Episode</b> delete karna hai?</f>",
+        "admin_del_ep_confirm": "⚠️ <b><f>FINAL WARNING</f></b> ⚠️\n\n<f>Aap</f> <b>{content_name}</b> - <b>S{season_name}</b> - <b>Ep {ep_num}</b> <f>delete karne wale hain. Iske saare qualities delete ho jayenge.</f>\n\n<b><f>Are you sure?</f></b>",
+        "admin_del_ep_success": "✅ <b><f>Success!</f></b>\n<f>Episode</f> '{ep_num}' <f>delete ho gaya hai.</f>",
+        "admin_del_ep_error": "❌ <b><f>Error!</f></b> <f>Episode delete nahi ho paya.</f>",
+
+        # === Admin: Update Photo ===
+        "admin_menu_update_photo": "🖼️ <b><f>Photo Settings</f></b> 🖼️\n\n<f>Aap kaunsi photo change karna chahte hain?</f>",
+        "admin_update_photo_select_content": "<f>Kaunse <b>{content_type}</b> ka poster update karna hai?</f>\n\n<b><f>Recently Updated First</f></b> <f>(Sabse naya pehle):</f>\n<f>(Page {page})</f>",
+        "admin_update_photo_no_content": "❌ <f>Error: Abhi koi {content_type} add nahi hua hai.</f>",
+        "admin_update_photo_select_target": "<f>Aapne</f> <b>{content_name}</b> <f>select kiya hai.</f>\n\n<f>Aap iska <b>Main Poster</b> change karna chahte hain ya kisi <b>Season</b> ka?</f>",
+        "admin_update_photo_get_poster": "<f>Aapne</f> <b>{target_name}</b> <f>select kiya hai.</f>\n\n<f>Ab naya <b>Poster (Photo)</b> bhejo.</f>\n\n/cancel - <f>Cancel.</f>",
+        "admin_update_photo_invalid": "<f>Ye photo nahi hai. Please ek photo bhejo ya</f> /cancel <f>karo.</f>",
+        "admin_update_photo_save_success_main": "✅ <b><f>Success!</f></b>\n{content_name} <f>ka <b>Main Poster</b> change ho gaya hai.</f>",
+        "admin_update_photo_save_success_season": "✅ <b><f>Success!</f></b>\n{content_name} - <b>Season {season_name}</b> <f>ka poster change ho gaya hai.</f>",
+        "admin_update_photo_save_error_db": "❌ <b><f>Error!</f></b> <f>Poster update nahi ho paya.</f>",
+
+        # === Admin: Edit Content ===
+        "admin_edit_content_select": "<f>Kaunsa <b>{content_type}</b> ka naam edit karna hai?</f>\n\n<b><f>Recently Updated First</f></b> <f>(Sabse naya pehle):</f>\n<f>(Page {page})</f>",
+        "admin_edit_content_no_content": "❌ <f>Error: Abhi koi {content_type} add nahi hua hai.</f>",
+        "admin_edit_content_get_name": "<f>Aapne</f> <b>{content_name}</b> <f>select kiya hai.</f>\n\n<f>Ab iska <b>Naya Naam</b> bhejo.</f>\n\n/cancel - <f>Cancel.</f>",
+        "admin_edit_content_save_exists": "⚠️ <b><f>Error!</f></b> <f>Naya naam</f> '{new_name}' <f>pehle se maujood hai. Koi doosra naam dein.</f>\n\n/cancel - <f>Cancel.</f>",
+        "admin_edit_content_confirm": "<b><f>Confirm Karo:</f></b>\n\n<f>Purana Naam:</f> <code>{old_name}</code>\n<f>Naya Naam:</f> <code>{new_name}</code>\n\n<b><f>Are you sure?</f></b>",
+        "admin_edit_content_success": "✅ <b><f>Success!</f></b>\n<f>{content_type}</f> '{old_name}' <f>ka naam badal kar</f> '{new_name}' <f>ho gaya hai.</f>",
+        "admin_edit_content_error": "❌ <b><f>Error!</f></b> <f>{content_type} naam update nahi ho paya.</f>",
+
+        # === Admin: Edit Season ===
+        "admin_edit_season_select_content": "<f>Kaunse <b>Series</b> ka season edit karna hai?</f>\n\n<b><f>Recently Updated First</f></b> <f>(Sabse naya pehle):</f>\n<f>(Page {page})</f>",
+        "admin_edit_season_no_content": "❌ <f>Error: Abhi koi Series add nahi hui hai.</f>",
+        "admin_edit_season_no_season": "❌ <b><f>Error!</f></b> '{content_name}' <f>mein koi season nahi hai.</f>",
+        "admin_edit_season_select_season": "<f>Aapne</f> <b>{content_name}</b> <f>select kiya hai.</f>\n\n<f>Kaunsa <b>Season</b> ka naam edit karna hai?</f>",
+        "admin_edit_season_get_name": "<f>Aapne</f> <b>{content_name}</b> -> <b>Season {season_name}</b> <f>select kiya hai.</f>\n\n<f>Ab iska <b>Naya Naam/Number</b> bhejo.</f>\n\n/cancel - <f>Cancel.</f>",
+        "admin_edit_season_save_exists": "⚠️ <b><f>Error!</f></b> <f>Naya naam</f> '{new_name}' <f>is series mein pehle se maujood hai. Koi doosra naam dein.</f>\n\n/cancel - <f>Cancel.</f>",
+        "admin_edit_season_confirm": "<b><f>Confirm Karo:</f></b>\n\n<f>Series:</f> <code>{content_name}</code>\n<f>Purana Season:</f> <code>{old_name}</code>\n<f>Naya Season:</f> <code>{new_name}</code>\n\n<b><f>Are you sure?</f></b>",
+        "admin_edit_season_success": "✅ <b><f>Success!</f></b>\n<f>Season</f> '{old_name}' <f>ka naam badal kar</f> '{new_name}' <f>ho gaya hai.</f>",
+        "admin_edit_season_error": "❌ <b><f>Error!</f></b> <f>Season naam update nahi ho paya.</f>",
+
+        # === Admin: Edit Episode ===
+        "admin_edit_ep_select_content": "<f>Kaunse <b>content</b> ka episode edit karna hai?</f>\n\n<b><f>Recently Updated First</f></b> <f>(Sabse naya pehle):</f>\n<f>(Page {page})</f>",
+        "admin_edit_ep_no_content": "❌ <f>Error: Abhi koi content add nahi hua hai.</f>",
+        "admin_edit_ep_no_season": "❌ <b><f>Error!</f></b> '{content_name}' <f>mein koi season nahi hai.</f>",
+        "admin_edit_ep_select_season": "<f>Aapne</f> <b>{content_name}</b> <f>select kiya hai.</f>\n\n<f>Kaunsa <b>Season</b> select karna hai?</f>",
+        "admin_edit_ep_no_episode": "❌ <b><f>Error!</f></b> '{content_name}' - Season {season_name} <f>mein koi episode nahi hai.</f>",
+        "admin_edit_ep_select_episode": "<f>Aapne</f> <b>Season {season_name}</b> <f>select kiya hai.</f>\n\n<f>Kaunsa <b>Episode</b> ka number edit karna hai?</f>",
+        "admin_edit_ep_get_num": "<f>Aapne</f> <b>{content_name}</b> -> <b>S{season_name}</b> -> <b>Ep {ep_num}</b> <f>select kiya hai.</f>\n\n<f>Ab iska <b>Naya Number</b> bhejo.</f>\n\n/cancel - <f>Cancel.</f>",
+        "admin_edit_ep_save_exists": "⚠️ <b><f>Error!</f></b> <f>Naya number</f> '{new_num}' <f>is season mein pehle se maujood hai. Koi doosra number dein.</f>\n\n/cancel - <f>Cancel.</f>",
+        "admin_edit_ep_confirm": "<b><f>Confirm Karo:</f></b>\n\n<f>Content:</f> <code>{content_name}</code>\n<f>Season:</f> <code>{season_name}</code>\n<f>Purana Episode:</f> <code>{old_num}</code>\n<f>Naya Episode:</f> <code>{new_num}</code>\n\n<b><f>Are you sure?</f></b>",
+        "admin_edit_ep_success": "✅ <b><f>Success!</f></b>\n<f>Episode</f> '{old_num}' <f>ka number badal kar</f> '{new_num}' <f>ho gaya hai.</f>",
+        "admin_edit_ep_error": "❌ <b><f>Error!</f></b> <f>Episode number update nahi ho paya.</f>",
 
         # === Admin: Admin Settings ===
         "admin_menu_admin_settings": "🛠️ <b><f>Admin Settings</f></b> 🛠️\n\n<f>Yahan aap Co-Admins aur doosri advanced settings manage kar sakte hain.</f>",
@@ -462,7 +526,7 @@ async def get_default_messages():
         "admin_co_admin_remove_start": "<f>Kis Co-Admin ko remove karna hai?</f>",
         "admin_co_admin_remove_confirm": "<f>Aap Co-Admin ID</f> <code>{user_id}</code> <f>ko remove karne wale hain.</f>\n\n<b><f>Are you sure?</f></b>",
         "admin_co_admin_remove_success": "✅ <b><f>Success!</f></b>\n<f>Co-Admin ID</f> <code>{user_id}</code> <f>remove ho gaya hai.</f>",
-        "admin_co_admin_remove_error": "❌ <b><f>Error!</f></b> <f>Co-Admin remove nahi ho paya.</f>",
+        "admin_co_admin_remove_error": "❌ <b><f>Error!</f></b> <f>Co-Admin remove nahi ho paya.",
         "admin_co_admin_list_none": "<f>Abhi koi Co-Admin nahi hai.</f>",
         "admin_co_admin_list_header": "<b><f>List of Co-Admins:</f></b>\n",
         "admin_custom_post_start": "🚀 <b><f>Custom Post Generator</f></b>\n\n<f>Ab uss <b>Channel ka @username</b> ya <b>Group/Channel ki Chat ID</b> bhejo jahaan ye post karna hai.</f>\n<f>(Example: @MyChannel ya -100123456789)</f>\n\n/cancel - <f>Cancel.</f>",
@@ -481,6 +545,16 @@ async def get_default_messages():
         "admin_appearance_select_style": "<f>Kaunsa style select karna hai?</f>\n\n<f>Current:</f> <b>{style}</b>",
         "admin_appearance_set_font_success": "✅ <b><f>Success!</f></b> <f>Font ko</f> <b>{font}</b> <f>par set kar diya gaya hai.</f>",
         "admin_appearance_set_style_success": "✅ <b><f>Success!</f></b> <f>Style ko</f> <b>{style}</b> <f>par set kar diya gaya hai.</f>",
+
+        # === Admin: Merge Content ===
+        "admin_menu_merge_content": "🔄 <b><f>Merge {content_type}</f></b> 🔄\n\n<f>Yeh feature do alag-alag {content_type} entries ko ek mein combine kar dega.</f>",
+        "admin_merge_select_type": "<f>Kis type ka content merge karna hai?</f>",
+        "admin_merge_select_target": "1️⃣ <f>Pehle, <b>TARGET</b> {content_type} select karein.</f>\n\n<f>(Yeh woh {content_type} hai jiske ANDAR aap doosre seasons daalna chahte hain.)</f>\n<f>(Page {page})</f>",
+        "admin_merge_select_source": "2️⃣ <f>Ab, <b>SOURCE</b> {content_type} select karein.</f>\n\n<f>(Yeh woh {content_type} hai jisko delete karke iske saare seasons <b>{target_name}</b> mein move kar diye jayenge.)</f>\n<f>(Page {page})</f>",
+        "admin_merge_self_merge_error": "❌ <f>Error! Aap ek {content_type} ko khud se merge nahi kar sakte. Koi doosra {content_type} chunein.</f>",
+        "admin_merge_confirm": "⚠️ <b><f>FINAL CONFIRMATION</f></b> ⚠️\n\n<f>Aap <b>SOURCE</b> {content_type}:</f>\n<code>{source_name}</code>\n<f>ke saare seasons ko <b>TARGET</b> {content_type}:</f>\n<code>{target_name}</code>\n<f>mein move kar rahe hain.</f>\n\n<f>Total</f> <b>{count}</b> <f>seasons move honge.</f>\n<f>Source {content_type}</f> (<code>{source_name}</code>) <f>delete ho jayega.</f>\n\n<b><f>Are you sure?</f></b>",
+        "admin_merge_success": "✅ <b><f>Success!</f></b>\n<f>Total</f> <b>{count}</b> <f>seasons ko</f> <code>{source_name}</code> <f>se</f> <code>{target_name}</code> <f>mein move kar diya gaya hai.</f>\n<f>Source {content_type} delete ho gaya hai.</f>",
+        "admin_merge_error": "❌ <b><f>Error!</f></b> <f>Merge nahi ho paya. Dono {content_type} check karein. Error:</f> {e}",
 
         # === Admin: User Stats ===
         "admin_stats_loading": "⏳ <f>Stats calculate kar raha hoon...</f>",
@@ -642,25 +716,35 @@ async def delete_message_later(bot, chat_id: int, message_id: int, seconds: int)
         logger.warning(f"Message delete karne me error: {e}")
 
 # --- Conversation States ---
+# Add Movie/Series
 (A_GET_NAME, A_GET_POSTER, A_GET_DESC, A_CONFIRM) = range(4)
-(S_GET_SERIES, S_GET_NUMBER, S_GET_POSTER, S_GET_DESC, S_CONFIRM, S_ASK_MORE) = range(10, 16)
+
+# Add Season
+(S_GET_CONTENT, S_GET_NUMBER, S_GET_POSTER, S_GET_DESC, S_CONFIRM, S_ASK_MORE) = range(10, 16)
+
+# Add Episode
 (E_GET_CONTENT, E_GET_SEASON, E_GET_NUMBER, E_GET_480P, E_GET_720P, E_GET_1080P, E_GET_4K, E_ASK_MORE) = range(20, 28)
-(CD_GET_QR, CL_GET_LINK, CS_GET_DELETE_TIME, CS_GET_MENU_PHOTO) = range(30, 34)
-(PG_MENU, PG_GET_CONTENT, PG_GET_SEASON, PG_GET_EPISODE, PG_GET_SHORT_LINK, PG_GET_CHAT) = range(40, 46)
-(DA_GET_CONTENT, DA_CONFIRM) = range(50, 52)
-(DS_GET_SERIES, DS_GET_SEASON, DS_CONFIRM) = range(52, 55)
-(DE_GET_CONTENT, DE_GET_SEASON, DE_GET_EPISODE, DE_CONFIRM) = range(55, 59)
-(UP_GET_CONTENT, UP_GET_TARGET, UP_GET_POSTER) = range(60, 63)
-(CA_GET_ID, CA_CONFIRM, CR_GET_ID, CR_CONFIRM) = range(63, 67)
-(CPOST_GET_CHAT, CPOST_GET_POSTER, CPOST_GET_CAPTION, CPOST_GET_BTN_TEXT, CPOST_GET_BTN_URL, CPOST_CONFIRM) = range(67, 73)
-(EA_GET_CONTENT, EA_GET_NEW_NAME, EA_CONFIRM) = range(73, 76)
-(ES_GET_SERIES, ES_GET_SEASON, ES_GET_NEW_NAME, ES_CONFIRM) = range(76, 80)
-(EE_GET_CONTENT, EE_GET_SEASON, EE_GET_EPISODE, EE_GET_NEW_NUM, EE_CONFIRM) = range(80, 85)
-(M_MENU_MAIN, M_MENU_DL, M_MENU_GEN, M_MENU_POSTGEN, M_GET_MSG, M_MENU_ADMIN) = range(85, 91)
-(GL_MENU, GL_GET_CONTENT, GL_GET_SEASON, GL_GET_EPISODE) = range(91, 95)
-(AP_MENU, AP_SET_FONT, AP_SET_STYLE) = range(95, 98)
-(MA_GET_TARGET, MA_GET_SOURCE, MA_CONFIRM) = range(98, 101)
-(BC_GET_MESSAGE, BC_CONFIRM) = range(101, 103)
+
+# Delete
+(DA_GET_CONTENT, DA_CONFIRM) = range(30, 32)
+(DS_GET_CONTENT, DS_GET_SEASON, DS_CONFIRM) = range(32, 35)
+(DE_GET_CONTENT, DE_GET_SEASON, DE_GET_EPISODE, DE_CONFIRM) = range(35, 39)
+
+# Edit
+(EA_GET_CONTENT, EA_GET_NEW_NAME, EA_CONFIRM) = range(40, 43)
+(ES_GET_CONTENT, ES_GET_SEASON, ES_GET_NEW_NAME, ES_CONFIRM) = range(43, 47)
+(EE_GET_CONTENT, EE_GET_SEASON, EE_GET_EPISODE, EE_GET_NEW_NUM, EE_CONFIRM) = range(47, 52)
+
+# Other States
+(CD_GET_QR, CL_GET_LINK, CS_GET_DELETE_TIME) = range(60, 63)
+(UP_GET_CONTENT, UP_GET_TARGET, UP_GET_POSTER) = range(63, 66)
+(CA_GET_ID, CA_CONFIRM, CR_GET_ID, CR_CONFIRM) = range(66, 70)
+(CPOST_CHAT, CPOST_POSTER, CPOST_CAPTION, CPOST_BTN_TEXT, CPOST_BTN_URL, CPOST_CONFIRM) = range(70, 76)
+(MM_MAIN, MM_DL, MM_GEN, MM_POSTGEN, MM_GET_MSG, MM_ADMIN) = range(76, 82)
+(AP_MENU, AP_FONT, AP_STYLE) = range(82, 85)
+(CS_MENU_PHOTO,) = range(85, 86)
+(BC_GET_MSG, BC_CONFIRM) = range(86, 88)
+(MERGE_TYPE, MERGE_TARGET, MERGE_SOURCE, MERGE_CONFIRM) = range(88, 92)
 
 # --- Cancel Function ---
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -681,7 +765,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
                 await query.edit_message_text(reply_text, parse_mode=ParseMode.HTML)
     except BadRequest as e:
         if "Message is not modified" not in str(e):
-                logger.warning(f"Cancel me edit nahi kar paya: {e}")
+            logger.warning(f"Cancel me edit nahi kar paya: {e}")
     except Exception as e:
         logger.error(f"Cancel me error: {e}")
 
@@ -718,10 +802,8 @@ async def back_to_edit_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await edit_content_menu(update, context)
     return ConversationHandler.END
 
-async def back_to_sub_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    await admin_command(update, context, from_callback=True)
+async def back_to_user_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await show_user_menu(update, context, from_callback=True)
     return ConversationHandler.END
 
 async def back_to_donate_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -734,10 +816,6 @@ async def back_to_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     await other_links_menu(update, context)
-    return ConversationHandler.END
-
-async def back_to_user_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await show_user_menu(update, context, from_callback=True)
     return ConversationHandler.END
 
 async def back_to_messages_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -768,7 +846,7 @@ async def back_to_gen_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     await gen_link_menu(update, context)
-    return GL_MENU
+    return ConversationHandler.END
 
 # ============================================
 # ===        ADMIN COMMANDS                ===
@@ -788,6 +866,7 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE, from
     logger.info("Admin/Co-Admin ne /admin command use kiya.")
     
     if not await is_main_admin(user_id):
+        # Co-Admin Menu
         keyboard = [
             [InlineKeyboardButton("🎬 Add Movie", callback_data="admin_add_movie")],
             [InlineKeyboardButton("📺 Add Series", callback_data="admin_add_series")],
@@ -801,6 +880,7 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE, from
         admin_menu_text = await format_message(context, "admin_panel_co")
     
     else:
+        # Main Admin Menu
         keyboard = [
             [InlineKeyboardButton("🎬 Add Movie", callback_data="admin_add_movie")],
             [InlineKeyboardButton("📺 Add Series", callback_data="admin_add_series")],
@@ -864,45 +944,8 @@ async def add_content_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = await format_message(context, "admin_menu_add_content")
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
 
-async def manage_content_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, from_message: bool = False):
-    query = update.callback_query
-    if query: await query.answer()
-    
-    keyboard = [
-        [InlineKeyboardButton("🗑️ Delete Movie", callback_data="admin_del_movie")],
-        [InlineKeyboardButton("🗑️ Delete Series", callback_data="admin_del_series")],
-        [InlineKeyboardButton("🗑️ Delete Season", callback_data="admin_del_season")],
-        [InlineKeyboardButton("🗑️ Delete Episode", callback_data="admin_del_episode")],
-        [InlineKeyboardButton("⬅️ Back to Admin Menu", callback_data="admin_menu")]
-    ]
-    text = await format_message(context, "admin_menu_manage_content")
-    
-    if from_message:
-        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
-    elif query:
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
-
-async def edit_content_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, from_message: bool = False):
-    query = update.callback_query
-    if query: await query.answer()
-    
-    keyboard = [
-        [InlineKeyboardButton("✏️ Edit Movie Name", callback_data="admin_edit_movie")],
-        [InlineKeyboardButton("✏️ Edit Series Name", callback_data="admin_edit_series")],
-        [InlineKeyboardButton("✏️ Edit Season Name", callback_data="admin_edit_season")],
-        [InlineKeyboardButton("✏️ Edit Episode Number", callback_data="admin_edit_episode")],
-        [InlineKeyboardButton("🔄 Merge Content", callback_data="admin_merge_content")],
-        [InlineKeyboardButton("⬅️ Back to Admin Menu", callback_data="admin_menu")]
-    ]
-    text = await format_message(context, "admin_menu_edit_content")
-    
-    if from_message:
-        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
-    elif query:
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
-
 # ============================================
-# ===        CONVERSATION: ADD MOVIE       ===
+# ===        ADD MOVIE                    ===
 # ============================================
 
 async def add_movie_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -913,7 +956,7 @@ async def add_movie_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return A_GET_NAME
 
 async def add_movie_get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['movie_name'] = update.message.text
+    context.user_data['content_name'] = update.message.text
     text = await format_message(context, "admin_add_movie_get_name")
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
     return A_GET_POSTER
@@ -923,23 +966,23 @@ async def add_movie_get_poster(update: Update, context: ContextTypes.DEFAULT_TYP
         text = await format_message(context, "admin_add_movie_get_poster_error")
         await update.message.reply_text(text, parse_mode=ParseMode.HTML)
         return A_GET_POSTER
-    context.user_data['movie_poster_id'] = update.message.photo[-1].file_id
+    context.user_data['poster_id'] = update.message.photo[-1].file_id
     text = await format_message(context, "admin_add_movie_get_poster")
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
     return A_GET_DESC
 
 async def add_movie_get_desc(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['movie_desc'] = update.message.text
-    return await confirm_movie_details(update, context)
+    context.user_data['description'] = update.message.text
+    return await add_movie_confirm(update, context)
 
 async def add_movie_skip_desc(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['movie_desc'] = None
-    return await confirm_movie_details(update, context)
+    context.user_data['description'] = None
+    return await add_movie_confirm(update, context)
 
-async def confirm_movie_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    name = context.user_data['movie_name']
-    poster_id = context.user_data['movie_poster_id']
-    desc = context.user_data['movie_desc']
+async def add_movie_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    name = context.user_data['content_name']
+    poster_id = context.user_data['poster_id']
+    desc = context.user_data.get('description', '')
     
     caption = await format_message(context, "admin_add_movie_confirm", {
         "name": name,
@@ -952,7 +995,7 @@ async def confirm_movie_details(update: Update, context: ContextTypes.DEFAULT_TY
             await update.message.reply_photo(photo=poster_id, caption=caption, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
         except Exception as e:
             logger.warning(f"Confirm movie details me error: {e}")
-            text = await format_message(context, "admin_add_movie_save_error")
+            text = await format_message(context, "admin_add_movie_confirm_error")
             await update.message.reply_text(text, parse_mode=ParseMode.HTML)
             return A_GET_DESC
     return A_CONFIRM
@@ -961,7 +1004,7 @@ async def save_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     try:
-        name = context.user_data['movie_name']
+        name = context.user_data['content_name']
         if content_collection.find_one({"name": name}):
             caption = await format_message(context, "admin_add_movie_save_exists", {"name": name})
             await query.edit_message_caption(caption=caption, parse_mode=ParseMode.HTML)
@@ -972,8 +1015,8 @@ async def save_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
         content_doc = {
             "name": name,
             "type": "movie",
-            "poster_id": context.user_data['movie_poster_id'],
-            "description": context.user_data['movie_desc'],
+            "poster_id": context.user_data['poster_id'],
+            "description": context.user_data.get('description'),
             "episodes": {},
             "created_at": datetime.now(),
             "last_modified": datetime.now()
@@ -991,7 +1034,7 @@ async def save_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 # ============================================
-# ===        CONVERSATION: ADD SERIES      ===
+# ===        ADD SERIES                   ===
 # ============================================
 
 async def add_series_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1002,7 +1045,7 @@ async def add_series_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return A_GET_NAME
 
 async def add_series_get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['series_name'] = update.message.text
+    context.user_data['content_name'] = update.message.text
     text = await format_message(context, "admin_add_series_get_name")
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
     return A_GET_POSTER
@@ -1012,23 +1055,23 @@ async def add_series_get_poster(update: Update, context: ContextTypes.DEFAULT_TY
         text = await format_message(context, "admin_add_series_get_poster_error")
         await update.message.reply_text(text, parse_mode=ParseMode.HTML)
         return A_GET_POSTER
-    context.user_data['series_poster_id'] = update.message.photo[-1].file_id
+    context.user_data['poster_id'] = update.message.photo[-1].file_id
     text = await format_message(context, "admin_add_series_get_poster")
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
     return A_GET_DESC
 
 async def add_series_get_desc(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['series_desc'] = update.message.text
-    return await confirm_series_details(update, context)
+    context.user_data['description'] = update.message.text
+    return await add_series_confirm(update, context)
 
 async def add_series_skip_desc(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['series_desc'] = None
-    return await confirm_series_details(update, context)
+    context.user_data['description'] = None
+    return await add_series_confirm(update, context)
 
-async def confirm_series_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    name = context.user_data['series_name']
-    poster_id = context.user_data['series_poster_id']
-    desc = context.user_data['series_desc']
+async def add_series_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    name = context.user_data['content_name']
+    poster_id = context.user_data['poster_id']
+    desc = context.user_data.get('description', '')
     
     caption = await format_message(context, "admin_add_series_confirm", {
         "name": name,
@@ -1041,7 +1084,7 @@ async def confirm_series_details(update: Update, context: ContextTypes.DEFAULT_T
             await update.message.reply_photo(photo=poster_id, caption=caption, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
         except Exception as e:
             logger.warning(f"Confirm series details me error: {e}")
-            text = await format_message(context, "admin_add_series_save_error")
+            text = await format_message(context, "admin_add_series_confirm_error")
             await update.message.reply_text(text, parse_mode=ParseMode.HTML)
             return A_GET_DESC
     return A_CONFIRM
@@ -1050,7 +1093,7 @@ async def save_series(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     try:
-        name = context.user_data['series_name']
+        name = context.user_data['content_name']
         if content_collection.find_one({"name": name}):
             caption = await format_message(context, "admin_add_series_save_exists", {"name": name})
             await query.edit_message_caption(caption=caption, parse_mode=ParseMode.HTML)
@@ -1061,8 +1104,8 @@ async def save_series(update: Update, context: ContextTypes.DEFAULT_TYPE):
         content_doc = {
             "name": name,
             "type": "series",
-            "poster_id": context.user_data['series_poster_id'],
-            "description": context.user_data['series_desc'],
+            "poster_id": context.user_data['poster_id'],
+            "description": context.user_data.get('description'),
             "seasons": {},
             "created_at": datetime.now(),
             "last_modified": datetime.now()
@@ -1080,15 +1123,15 @@ async def save_series(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 # ============================================
-# ===        CONVERSATION: ADD SEASON      ===
+# ===        ADD SEASON                   ===
 # ============================================
 
 async def add_season_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    return await add_season_show_series_list(update, context, page=0)
+    return await add_season_show_content_list(update, context, page=0)
 
-async def add_season_show_series_list(update: Update, context: ContextTypes.DEFAULT_TYPE, page: int = 0):
+async def add_season_show_content_list(update: Update, context: ContextTypes.DEFAULT_TYPE, page: int = 0):
     query = update.callback_query
     
     if query.data.startswith("addseason_page_"):
@@ -1097,51 +1140,56 @@ async def add_season_show_series_list(update: Update, context: ContextTypes.DEFA
         
     context.user_data['current_page'] = page
     
-    series, keyboard = await build_paginated_keyboard(
+    items, keyboard = await build_paginated_keyboard(
         collection=content_collection,
         page=page,
         page_callback_prefix="addseason_page_",
-        item_callback_prefix="season_series_",
+        item_callback_prefix="season_content_",
         back_callback="back_to_add_content",
         filter_query={"type": "series"}
     )
     
-    if not series and page == 0:
-        text = await format_message(context, "admin_add_season_no_series")
+    if not items and page == 0:
+        text = await format_message(context, "admin_add_season_no_content")
     else:
-        text = await format_message(context, "admin_add_season_select_series", {"page": page + 1})
+        text = await format_message(context, "admin_add_season_select_content", {"page": page + 1})
     
     await query.edit_message_text(text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
-    return S_GET_SERIES
+    return S_GET_CONTENT
 
-async def add_season_get_series(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def add_season_get_content(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    series_name = query.data.replace("season_series_", "")
-    context.user_data['series_name'] = series_name
+    content_name = query.data.replace("season_content_", "")
+    context.user_data['content_name'] = content_name
     
-    series_doc = content_collection.find_one({"name": series_name})
-    if not series_doc:
-        text = await format_message(context, "admin_add_season_get_number_error", {"series_name": series_name})
+    content_doc = content_collection.find_one({"name": content_name})
+    if not content_doc:
+        text = await format_message(context, "admin_add_season_get_number_error", {"content_name": content_name})
         await query.edit_message_text(text, parse_mode=ParseMode.HTML)
         return ConversationHandler.END
     
-    seasons = series_doc.get("seasons", {})
+    if content_doc.get('type') != 'series':
+        text = f"❌ <b><f>Error!</f></b> '{content_name}' <f>ek movie hai, isme season add nahi kar sakte.</f>"
+        await query.edit_message_text(text, parse_mode=ParseMode.HTML)
+        return ConversationHandler.END
+    
+    seasons = content_doc.get("seasons", {})
     season_keys = list(seasons.keys())
     
     if not season_keys:
-        text = await format_message(context, "admin_add_season_get_series_no_last", {"series_name": series_name})
+        text = await format_message(context, "admin_add_season_get_content_no_last", {"content_name": content_name})
     else:
         try:
             sorted_seasons = sorted(season_keys, key=lambda x: [int(c) if c.isdigit() else c for c in re.split(r'(\d+)', x)])
             last_season_name = sorted_seasons[-1]
-            text = await format_message(context, "admin_add_season_get_series_with_last", {
-                "series_name": series_name,
+            text = await format_message(context, "admin_add_season_get_content_with_last", {
+                "content_name": content_name,
                 "last_season_name": last_season_name
             })
         except Exception as e:
             logger.warning(f"Last season find karne me error: {e}")
-            text = await format_message(context, "admin_add_season_get_series_no_last", {"series_name": series_name})
+            text = await format_message(context, "admin_add_season_get_content_no_last", {"content_name": content_name})
     
     await query.edit_message_text(text, parse_mode=ParseMode.HTML)
     return S_GET_NUMBER
@@ -1149,17 +1197,17 @@ async def add_season_get_series(update: Update, context: ContextTypes.DEFAULT_TY
 async def add_season_get_number(update: Update, context: ContextTypes.DEFAULT_TYPE):
     season_name = update.message.text
     context.user_data['season_name'] = season_name
-    series_name = context.user_data['series_name']
+    content_name = context.user_data['content_name']
     
-    series_doc = content_collection.find_one({"name": series_name})
-    if not series_doc:
-        text = await format_message(context, "admin_add_season_get_number_error", {"series_name": series_name})
+    content_doc = content_collection.find_one({"name": content_name})
+    if not content_doc:
+        text = await format_message(context, "admin_add_season_get_number_error", {"content_name": content_name})
         await update.message.reply_text(text, parse_mode=ParseMode.HTML)
         return ConversationHandler.END
             
-    if season_name in series_doc.get("seasons", {}):
+    if season_name in content_doc.get("seasons", {}):
         text = await format_message(context, "admin_add_season_get_number_exists", {
-            "series_name": series_name,
+            "content_name": content_name,
             "season_name": season_name
         })
         await update.message.reply_text(text, parse_mode=ParseMode.HTML)
@@ -1187,23 +1235,23 @@ async def add_season_skip_poster(update: Update, context: ContextTypes.DEFAULT_T
 
 async def add_season_get_desc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['season_desc'] = update.message.text
-    return await confirm_season_details(update, context)
+    return await add_season_confirm(update, context)
 
 async def add_season_skip_desc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['season_desc'] = None
-    return await confirm_season_details(update, context)
+    return await add_season_confirm(update, context)
 
-async def confirm_season_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    series_name = context.user_data['series_name']
+async def add_season_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    content_name = context.user_data['content_name']
     season_name = context.user_data['season_name']
     season_poster_id = context.user_data.get('season_poster_id')
     season_desc = context.user_data.get('season_desc')
     
-    series_doc = content_collection.find_one({"name": series_name})
-    poster_id_to_show = season_poster_id or series_doc.get('poster_id')
+    content_doc = content_collection.find_one({"name": content_name})
+    poster_id_to_show = season_poster_id or content_doc.get('poster_id')
     
     caption = await format_message(context, "admin_add_season_confirm", {
-        "series_name": series_name,
+        "content_name": content_name,
         "season_name": season_name,
         "season_desc": season_desc or 'N/A'
     })
@@ -1217,12 +1265,12 @@ async def confirm_season_details(update: Update, context: ContextTypes.DEFAULT_T
     )
     return S_CONFIRM
 
-async def save_season(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def add_season_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
     try:
-        series_name = context.user_data['series_name']
+        content_name = context.user_data['content_name']
         season_name = context.user_data['season_name']
         season_poster_id = context.user_data.get('season_poster_id')
         season_desc = context.user_data.get('season_desc')
@@ -1234,7 +1282,7 @@ async def save_season(update: Update, context: ContextTypes.DEFAULT_TYPE):
             season_data["_description"] = season_desc
         
         content_collection.update_one(
-            {"name": series_name},
+            {"name": content_name},
             {"$set": {
                 f"seasons.{season_name}": season_data,
                 "last_modified": datetime.now()
@@ -1242,7 +1290,7 @@ async def save_season(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         
         text = await format_message(context, "admin_add_season_ask_more", {
-            "series_name": series_name,
+            "content_name": content_name,
             "season_name": season_name
         })
         keyboard = [
@@ -1284,11 +1332,11 @@ async def add_season_more_yes(update: Update, context: ContextTypes.DEFAULT_TYPE
     await query.answer()
     
     last_season_name = context.user_data['season_name']
-    series_name = context.user_data['series_name']
+    content_name = context.user_data['content_name']
     
     text = await format_message(context, "admin_add_season_next_prompt", {
         "season_name": last_season_name,
-        "series_name": series_name,
+        "content_name": content_name,
     })
 
     context.user_data.pop('season_name', None)
@@ -1306,7 +1354,7 @@ async def add_season_more_no(update: Update, context: ContextTypes.DEFAULT_TYPE)
     return ConversationHandler.END
 
 # ============================================
-# ===        CONVERSATION: ADD EPISODE     ===
+# ===        ADD EPISODE                  ===
 # ============================================
 
 async def add_episode_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1323,7 +1371,7 @@ async def add_episode_show_content_list(update: Update, context: ContextTypes.DE
         
     context.user_data['current_page'] = page
         
-    content, keyboard = await build_paginated_keyboard(
+    items, keyboard = await build_paginated_keyboard(
         collection=content_collection,
         page=page,
         page_callback_prefix="addep_page_",
@@ -1331,7 +1379,7 @@ async def add_episode_show_content_list(update: Update, context: ContextTypes.DE
         back_callback="back_to_add_content"
     )
     
-    if not content and page == 0:
+    if not items and page == 0:
         text = await format_message(context, "admin_add_ep_no_content")
     else:
         text = await format_message(context, "admin_add_ep_select_content", {"page": page + 1})
@@ -1473,7 +1521,7 @@ async def add_episode_get_number(update: Update, context: ContextTypes.DEFAULT_T
 async def add_episode_get_480p(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await _save_episode_file_helper(update, context, "480p"):
         return E_GET_480P
-    text = await format_message(context, "admin_add_ep_get_720p")
+    text = await format_message(context, "admin_add_ep_get_480p")
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
     return E_GET_720P
 
@@ -1485,7 +1533,7 @@ async def add_episode_skip_480p(update: Update, context: ContextTypes.DEFAULT_TY
 async def add_episode_get_720p(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await _save_episode_file_helper(update, context, "720p"):
         return E_GET_720P
-    text = await format_message(context, "admin_add_ep_get_1080p")
+    text = await format_message(context, "admin_add_ep_get_720p")
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
     return E_GET_1080P
 
@@ -1497,7 +1545,7 @@ async def add_episode_skip_720p(update: Update, context: ContextTypes.DEFAULT_TY
 async def add_episode_get_1080p(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await _save_episode_file_helper(update, context, "1080p"):
         return E_GET_1080P
-    text = await format_message(context, "admin_add_ep_get_4k")
+    text = await format_message(context, "admin_add_ep_get_1080p")
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
     return E_GET_4K
 
@@ -1513,14 +1561,14 @@ async def add_episode_get_4k(update: Update, context: ContextTypes.DEFAULT_TYPE)
     else:
         return E_GET_4K
     
-    return await ask_add_more_episodes(update, context)
+    return await add_episode_ask_more(update, context)
 
 async def add_episode_skip_4k(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = await format_message(context, "admin_add_ep_skip_4k")
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
-    return await ask_add_more_episodes(update, context)
+    return await add_episode_ask_more(update, context)
 
-async def ask_add_more_episodes(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def add_episode_ask_more(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ep_num = context.user_data['ep_num']
     season_name = context.user_data.get('season_name', 'Movie')
     
@@ -1570,17 +1618,15 @@ async def add_episode_more_no(update: Update, context: ContextTypes.DEFAULT_TYPE
     return ConversationHandler.END
 
 # ============================================
-# ===        DELETE CONVERSATIONS          ===
+# ===        DELETE FUNCTIONS              ===
 # ============================================
 
-# Delete Movie
 async def delete_movie_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     context.user_data['content_type'] = 'movie'
     return await delete_content_show_list(update, context, page=0)
 
-# Delete Series
 async def delete_series_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -1599,7 +1645,7 @@ async def delete_content_show_list(update: Update, context: ContextTypes.DEFAULT
     content_type = context.user_data.get('content_type', 'movie')
     display_type = "Movie" if content_type == "movie" else "Series"
     
-    content, keyboard = await build_paginated_keyboard(
+    items, keyboard = await build_paginated_keyboard(
         collection=content_collection,
         page=page,
         page_callback_prefix="delcontent_page_",
@@ -1608,7 +1654,7 @@ async def delete_content_show_list(update: Update, context: ContextTypes.DEFAULT
         filter_query={"type": content_type}
     )
     
-    if not content and page == 0:
+    if not items and page == 0:
         text = await format_message(context, "admin_del_content_no_content", {"content_type": display_type})
     else:
         text = await format_message(context, "admin_del_content_select", {
@@ -1657,13 +1703,16 @@ async def delete_content_do(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await manage_content_menu(update, context)
     return ConversationHandler.END
 
-# Delete Season
+# ============================================
+# ===        DELETE SEASON                ===
+# ============================================
+
 async def delete_season_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    return await delete_season_show_series_list(update, context, page=0)
+    return await delete_season_show_content_list(update, context, page=0)
 
-async def delete_season_show_series_list(update: Update, context: ContextTypes.DEFAULT_TYPE, page: int = 0):
+async def delete_season_show_content_list(update: Update, context: ContextTypes.DEFAULT_TYPE, page: int = 0):
     query = update.callback_query
     
     if query.data.startswith("delseason_page_"):
@@ -1672,42 +1721,49 @@ async def delete_season_show_series_list(update: Update, context: ContextTypes.D
         
     context.user_data['current_page'] = page 
 
-    series, keyboard = await build_paginated_keyboard(
+    items, keyboard = await build_paginated_keyboard(
         collection=content_collection,
         page=page,
         page_callback_prefix="delseason_page_",
-        item_callback_prefix="del_season_series_",
+        item_callback_prefix="del_season_content_",
         back_callback="back_to_manage",
         filter_query={"type": "series"}
     )
     
-    if not series and page == 0:
-        text = await format_message(context, "admin_del_season_no_series")
+    if not items and page == 0:
+        text = await format_message(context, "admin_del_season_no_content")
     else:
-        text = await format_message(context, "admin_del_season_select_series", {"page": page + 1})
+        text = await format_message(context, "admin_del_season_select_content", {"page": page + 1})
 
     await query.edit_message_text(text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
-    return DS_GET_SERIES
+    return DS_GET_CONTENT
 
 async def delete_season_select(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    series_name = query.data.replace("del_season_series_", "")
-    context.user_data['series_name'] = series_name
-    series_doc = content_collection.find_one({"name": series_name})
-    seasons = series_doc.get("seasons", {})
-    if not seasons:
-        text = await format_message(context, "admin_del_season_no_season", {"series_name": series_name})
+    content_name = query.data.replace("del_season_content_", "")
+    context.user_data['content_name'] = content_name
+    content_doc = content_collection.find_one({"name": content_name})
+    
+    if content_doc.get('type') != 'series':
+        text = f"❌ <b><f>Error!</f></b> '{content_name}' <f>ek movie hai, isme season delete nahi kar sakte.</f>"
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="back_to_manage")]]), parse_mode=ParseMode.HTML)
         return ConversationHandler.END
+    
+    seasons = content_doc.get("seasons", {})
+    if not seasons:
+        text = await format_message(context, "admin_del_season_no_season", {"content_name": content_name})
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="back_to_manage")]]), parse_mode=ParseMode.HTML)
+        return ConversationHandler.END
+    
     sorted_seasons = sorted(seasons.keys(), key=lambda x: [int(c) if c.isdigit() else c for c in re.split(r'(\d+)', x)])
     buttons = [InlineKeyboardButton(f"Season {s}", callback_data=f"del_season_{s}") for s in sorted_seasons]
     keyboard = build_grid_keyboard(buttons, 1)
     
     current_page = context.user_data.get('current_page', 0)
-    keyboard.append([InlineKeyboardButton("⬅️ Back to Series", callback_data=f"delseason_page_{current_page}")])
+    keyboard.append([InlineKeyboardButton("⬅️ Back to Content", callback_data=f"delseason_page_{current_page}")])
 
-    text = await format_message(context, "admin_del_season_select_season", {"series_name": series_name})
+    text = await format_message(context, "admin_del_season_select_season", {"content_name": content_name})
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
     return DS_GET_SEASON
 
@@ -1716,10 +1772,10 @@ async def delete_season_confirm(update: Update, context: ContextTypes.DEFAULT_TY
     await query.answer()
     season_name = query.data.replace("del_season_", "")
     context.user_data['season_name'] = season_name
-    series_name = context.user_data['series_name']
+    content_name = context.user_data['content_name']
     keyboard = [[InlineKeyboardButton(f"✅ Haan, Season {season_name} Delete Karo", callback_data="del_season_confirm_yes")], [InlineKeyboardButton("⬅️ Back", callback_data="back_to_manage")]]
     text = await format_message(context, "admin_del_season_confirm", {
-        "series_name": series_name,
+        "content_name": content_name,
         "season_name": season_name
     })
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
@@ -1728,15 +1784,15 @@ async def delete_season_confirm(update: Update, context: ContextTypes.DEFAULT_TY
 async def delete_season_do(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer("Deleting...")
-    series_name = context.user_data['series_name']
+    content_name = context.user_data['content_name']
     season_name = context.user_data['season_name']
     try:
         content_collection.update_one(
-            {"name": series_name},
+            {"name": content_name},
             {"$unset": {f"seasons.{season_name}": ""},
              "$set": {"last_modified": datetime.now()}}
         )
-        logger.info(f"Season deleted: {series_name} - S{season_name}")
+        logger.info(f"Season deleted: {content_name} - S{season_name}")
         text = await format_message(context, "admin_del_season_success", {"season_name": season_name})
         await query.edit_message_text(text, parse_mode=ParseMode.HTML)
     except Exception as e:
@@ -1748,7 +1804,10 @@ async def delete_season_do(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await manage_content_menu(update, context)
     return ConversationHandler.END
 
-# Delete Episode
+# ============================================
+# ===        DELETE EPISODE               ===
+# ============================================
+
 async def delete_episode_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -1763,7 +1822,7 @@ async def delete_episode_show_content_list(update: Update, context: ContextTypes
 
     context.user_data['current_page'] = page
         
-    content, keyboard = await build_paginated_keyboard(
+    items, keyboard = await build_paginated_keyboard(
         collection=content_collection,
         page=page,
         page_callback_prefix="delep_page_",
@@ -1771,7 +1830,7 @@ async def delete_episode_show_content_list(update: Update, context: ContextTypes
         back_callback="back_to_manage"
     )
     
-    if not content and page == 0:
+    if not items and page == 0:
         text = await format_message(context, "admin_del_ep_no_content")
     else:
         text = await format_message(context, "admin_del_ep_select_content", {"page": page + 1})
@@ -1796,6 +1855,7 @@ async def delete_episode_select_season(update: Update, context: ContextTypes.DEF
         text = await format_message(context, "admin_del_ep_no_season", {"content_name": content_name})
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="back_to_manage")]]), parse_mode=ParseMode.HTML)
         return ConversationHandler.END
+    
     sorted_seasons = sorted(seasons.keys(), key=lambda x: [int(c) if c.isdigit() else c for c in re.split(r'(\d+)', x)])
     buttons = [InlineKeyboardButton(f"Season {s}", callback_data=f"del_ep_season_{s}") for s in sorted_seasons]
     keyboard = build_grid_keyboard(buttons, 1)
@@ -2019,6 +2079,32 @@ async def show_user_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"User stats dikhane me error: {e}")
         await query.edit_message_text(f"Error: {e}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="admin_menu")]]))
+
+async def post_gen_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    # Stub - to be fully implemented
+    await query.edit_message_text("Post Generator - Coming Soon", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="admin_menu")]]))
+
+async def gen_link_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    # Stub - to be fully implemented
+    await query.edit_message_text("Generate Link - Coming Soon", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="admin_menu")]]))
+
+async def appearance_menu_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if query: await query.answer()
+    # Stub - to be fully implemented
+    await query.edit_message_text("Appearance Settings - Coming Soon", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="admin_menu")]]))
+    return AP_MENU
+
+async def bot_messages_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if query: await query.answer()
+    # Stub - to be fully implemented
+    await query.edit_message_text("Bot Messages - Coming Soon", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="admin_menu")]]))
+    return MM_MAIN
 
 # ============================================
 # ===        USER COMMANDS                 ===
@@ -2751,9 +2837,9 @@ def main():
     add_season_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(add_season_start, pattern="^admin_add_season$")],
         states={
-            S_GET_SERIES: [
-                CallbackQueryHandler(add_season_show_series_list, pattern="^addseason_page_"),
-                CallbackQueryHandler(add_season_get_series, pattern="^season_series_")
+            S_GET_CONTENT: [
+                CallbackQueryHandler(add_season_show_content_list, pattern="^addseason_page_"),
+                CallbackQueryHandler(add_season_get_content, pattern="^season_content_")
             ],
             S_GET_NUMBER: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_season_get_number)],
             S_GET_POSTER: [
@@ -2764,7 +2850,7 @@ def main():
                 MessageHandler(filters.TEXT & ~filters.COMMAND, add_season_get_desc),
                 CommandHandler("skip", add_season_skip_desc)
             ],
-            S_CONFIRM: [CallbackQueryHandler(save_season, pattern="^save_season$")],
+            S_CONFIRM: [CallbackQueryHandler(add_season_save, pattern="^save_season$")],
             S_ASK_MORE: [
                 CallbackQueryHandler(add_season_more_yes, pattern="^add_season_more_yes$"),
                 CallbackQueryHandler(add_season_more_no, pattern="^add_season_more_no$")
@@ -2832,13 +2918,13 @@ def main():
     delete_season_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(delete_season_start, pattern="^admin_del_season$")],
         states={
-            DS_GET_SERIES: [
-                CallbackQueryHandler(delete_season_show_series_list, pattern="^delseason_page_"),
-                CallbackQueryHandler(delete_season_select, pattern="^del_season_series_")
+            DS_GET_CONTENT: [
+                CallbackQueryHandler(delete_season_show_content_list, pattern="^delseason_page_"),
+                CallbackQueryHandler(delete_season_select, pattern="^del_season_content_")
             ],
             DS_GET_SEASON: [
                 CallbackQueryHandler(delete_season_confirm, pattern="^del_season_"),
-                CallbackQueryHandler(delete_season_show_series_list, pattern="^delseason_page_")
+                CallbackQueryHandler(delete_season_show_content_list, pattern="^delseason_page_")
             ],
             DS_CONFIRM: [CallbackQueryHandler(delete_season_do, pattern="^del_season_confirm_yes$")]
         },
