@@ -1,6 +1,6 @@
-# Python 3.11+ required
-python-telegram-bot==21.10
-pymongo[srv]>=4.13,<5.0
-Flask>=3.0,<4.0
-waitress>=3.0,<4.0
-python-dotenv>=1.0,<2.0
+python-telegram-bot[job-queue], 
+pymongo, 
+python-dotenv,
+flask,
+waitress, 
+httpx
