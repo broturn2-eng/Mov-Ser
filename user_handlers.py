@@ -1,7 +1,8 @@
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
-from database import contents_collection, track_user, is_co_admin
+# FIX: Imported 'content_col' directly to match database.py
+from database import content_col, track_user, is_co_admin
 from messages import format_message
 from bson.objectid import ObjectId
 from config import ADMIN_ID, logger
@@ -28,7 +29,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_deep_link(update: Update, context: ContextTypes.DEFAULT_TYPE, item_id: str):
     user_id = update.effective_user.id
     try:
-        doc = contents_collection.find_one({"_id": ObjectId(item_id)})
+        # FIX: Using 'content_col' here instead of contents_collection
+        doc = content_col.find_one({"_id": ObjectId(item_id)})
     except Exception:
         doc = None
         
