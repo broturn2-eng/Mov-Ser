@@ -29,6 +29,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ParseMode
 from telegram.error import BadRequest, Forbidden, RetryAfter, TelegramError
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
+from waitress import serve
 
 
 logging.basicConfig(
@@ -90,21 +91,39 @@ class Settings:
     @classmethod
     def from_environment(cls) -> "Settings":
         load_dotenv()
+        # Accept the variable names used by the user's older bot as well.
+        # Render exposes only variables saved for the active service/environment,
+        # so supporting both names avoids a needless breaking deployment change.
+        raw_admin_ids = os.getenv("ADMIN_IDS") or os.getenv("ADMIN_ID")
+        public_url_value = os.getenv("WEBHOOK_PUBLIC_URL") or os.getenv("WEBHOOK_URL")
+        webhook_secret = os.getenv("WEBHOOK_SECRET")
         missing: list[str] = []
         for key in ("BOT_TOKEN", "MONGO_URI", "ADMIN_IDS", "WEBHOOK_PUBLIC_URL", "WEBHOOK_SECRET"):
             if not os.getenv(key):
+        for key, value in (("BOT_TOKEN", os.getenv("BOT_TOKEN")), ("MONGO_URI", os.getenv("MONGO_URI")), ("ADMIN_IDS or ADMIN_ID", raw_admin_ids), ("WEBHOOK_PUBLIC_URL or WEBHOOK_URL", public_url_value)):
+            if not value:
                 missing.append(key)
         if missing:
             raise RuntimeError("Missing required .env values: " + ", ".join(missing))
 
+        # It is still best to set WEBHOOK_SECRET in Render. A fresh random
+        # secret remains safe for this deployment if it is omitted; Telegram is
+        # configured with the same value immediately during startup.
+        if not webhook_secret:
+            webhook_secret = secrets.token_urlsafe(32)
+            LOG.warning("WEBHOOK_SECRET is not set; using a new secret for this process. Set it in Render for stable configuration.")
+
         try:
             admins = frozenset(int(item.strip()) for item in os.environ["ADMIN_IDS"].split(",") if item.strip())
+            admins = frozenset(int(item.strip()) for item in raw_admin_ids.split(",") if item.strip())
         except ValueError as exc:
             raise RuntimeError("ADMIN_IDS must be comma-separated numeric Telegram user IDs") from exc
+            raise RuntimeError("ADMIN_IDS/ADMIN_ID must contain numeric Telegram user IDs") from exc
         if not admins:
             raise RuntimeError("At least one ADMIN_IDS value is required")
 
         public_url = os.environ["WEBHOOK_PUBLIC_URL"].rstrip("/")
+        public_url = public_url_value.rstrip("/")
         if not public_url.startswith("https://"):
             raise RuntimeError("WEBHOOK_PUBLIC_URL must start with https://")
 
@@ -116,6 +135,7 @@ class Settings:
             webhook_public_url=public_url,
             webhook_path=os.getenv("WEBHOOK_PATH", "telegram").strip("/"),
             webhook_secret=os.environ["WEBHOOK_SECRET"],
+            webhook_secret=webhook_secret,
             port=int(os.getenv("PORT", "8080")),
         )
 
