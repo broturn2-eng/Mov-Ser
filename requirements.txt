@@ -1,6 +1,6 @@
-python-telegram-bot[job-queue], 
-pymongo, 
-python-dotenv,
-flask,
-waitress, 
+python-telegram-bot[job-queue]
+pymongo
+python-dotenv
+flask
+waitress
 httpx
