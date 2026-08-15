@@ -91,18 +91,17 @@ class Settings:
     @classmethod
     def from_environment(cls) -> "Settings":
         load_dotenv()
+        missing: list[str] = []
+        for key in ("BOT_TOKEN", "MONGO_URI", "ADMIN_IDS", "WEBHOOK_PUBLIC_URL", "WEBHOOK_SECRET"):
+            if not os.getenv(key):
+                missing.append(key)
         # Accept the variable names used by the user's older bot as well.
         # Render exposes only variables saved for the active service/environment,
         # so supporting both names avoids a needless breaking deployment change.
         raw_admin_ids = os.getenv("ADMIN_IDS") or os.getenv("ADMIN_ID")
         public_url_value = os.getenv("WEBHOOK_PUBLIC_URL") or os.getenv("WEBHOOK_URL")
         webhook_secret = os.getenv("WEBHOOK_SECRET")
-        missing: list[str] = []
-        for key in ("BOT_TOKEN", "MONGO_URI", "ADMIN_IDS", "WEBHOOK_PUBLIC_URL", "WEBHOOK_SECRET"):
-            if not os.getenv(key):
-        for key, value in (("BOT_TOKEN", os.getenv("BOT_TOKEN")), ("MONGO_URI", os.getenv("MONGO_URI")), ("ADMIN_IDS or ADMIN_ID", raw_admin_ids), ("WEBHOOK_PUBLIC_URL or WEBHOOK_URL", public_url_value)):
-            if not value:
-                missing.append(key)
+        missing = [key for key, value in (("BOT_TOKEN", os.getenv("BOT_TOKEN")), ("MONGO_URI", os.getenv("MONGO_URI")), ("ADMIN_IDS or ADMIN_ID", raw_admin_ids), ("WEBHOOK_PUBLIC_URL or WEBHOOK_URL", public_url_value)) if not value]
         if missing:
             raise RuntimeError("Missing required .env values: " + ", ".join(missing))
 
