@@ -134,7 +134,7 @@ class Settings:
             webhook_public_url=public_url,
             webhook_path=os.getenv("WEBHOOK_PATH", "telegram").strip("/"),
             webhook_secret=os.environ["WEBHOOK_SECRET"],
-            webhook_secret=,
+            webhook_secret=webhook_secret,
             port=int(os.getenv("PORT", "8080")),
         )
 
