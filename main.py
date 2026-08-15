@@ -1,1777 +1,1353 @@
-"""Rights-managed Movies and Web-Series Telegram bot.
-
-Use this bot only for media that you own or are authorized to distribute.
-The application is deliberately a single deployable file: copy it with
-requirements.txt and .env to a Python 3.11+ host, then run ``python main.py``.
-"""
-
-from __future__ import annotations
-
-import asyncio
-import html
-import logging
+# ============================================
+# ===       PRIME LEVEL BOT (PART 1)       ===
+# ===       IMPORTS & FONT ENGINE          ===
+# ============================================
 import os
+import logging
 import re
-import secrets
-import signal
+import asyncio
 import threading
-import time
+import httpx
 import uuid
-from dataclasses import dataclass
-from datetime import UTC, datetime
-from typing import Any, Awaitable, Callable, Final
-
+import html
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
-from flask import Flask, Response, abort, request
-from pymongo import ASCENDING, DESCENDING, AsyncMongoClient
-from pymongo.errors import DuplicateKeyError
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from pymongo import MongoClient, ASCENDING, DESCENDING
+from bson.objectid import ObjectId
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, User, InputMediaPhoto
 from telegram.constants import ParseMode
+from telegram.ext import (
+    Application, CommandHandler, ContextTypes, ConversationHandler,
+    MessageHandler, CallbackQueryHandler, filters, Defaults
+)
 from telegram.error import BadRequest, Forbidden, RetryAfter, TelegramError
-from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
+from flask import Flask, request
 from waitress import serve
 
+# --- Font Manager ---
+FONT_MAPS = {
+    'default': {},
+    'small_caps': {
+        'a': 'ᴀ', 'b': 'ʙ', 'c': 'ᴄ', 'd': 'ᴅ', 'e': 'ᴇ', 'f': 'ꜰ', 'g': 'ɢ', 'h': 'ʜ', 'i': 'ɪ',
+        'j': 'ᴊ', 'k': 'ᴋ', 'l': 'ʟ', 'm': 'ᴍ', 'n': 'ɴ', 'o': 'ᴏ', 'p': 'ᴘ', 'q': 'Q', 'r': 'ʀ',
+        's': 'ꜱ', 't': 'ᴛ', 'u': 'ᴜ', 'v': 'ᴠ', 'w': 'ᴡ', 'x': 'x', 'y': 'ʏ', 'z': 'ᴢ',
+        'A': 'A', 'B': 'B', 'C': 'C', 'D': 'D', 'E': 'E', 'F': 'F', 'G': 'G', 'H': 'H', 'I': 'I',
+        'J': 'J', 'K': 'K', 'L': 'L', 'M': 'M', 'N': 'N', 'O': 'O', 'P': 'P', 'Q': 'Q', 'R': 'R',
+        'S': 'S', 'T': 'T', 'U': 'U', 'V': 'V', 'W': 'W', 'X': 'X', 'Y': 'Y', 'Z': 'Z',
+        '0': '0', '1': '1', '2': '2', '3': '3', '4': '4', '5': '5', '6': '6', '7': '7', '8': '8', '9': '9'
+    },
+    'sans_serif': {
+        'a': '𝘢', 'b': '𝘣', 'c': '𝘤', 'd': '𝘥', 'e': '𝘦', 'f': '𝘧', 'g': '𝘨', 'h': '𝘩', 'i': '𝘪',
+        'j': '𝘫', 'k': '𝘬', 'l': '𝘭', 'm': '𝘮', 'n': '𝘯', 'o': '𝘰', 'p': '𝘱', 'q': '𝘲', 'r': '𝘳',
+        's': '𝘴', 't': '𝘵', 'u': '𝘶', 'v': '𝘷', 'w': '𝘸', 'x': '𝘹', 'y': '𝘺', 'z': '𝘻',
+        'A': '𝘈', 'B': '𝘉', 'C': '𝘊', 'D': '𝘋', 'E': '𝘌', 'F': '𝘍', 'G': '𝘎', 'H': '𝘏', 'I': '𝘐',
+        'J': '𝘑', 'K': '𝘒', 'L': '𝘓', 'M': '𝘔', 'N': '𝘕', 'O': '𝘖', 'P': '𝘗', 'Q': '𝘘', 'R': '𝘙',
+        'S': '𝘚', 'T': '𝘛', 'U': '𝘜', 'V': '𝘝', 'W': '𝘞', 'X': '𝘟', 'Y': '𝘠', 'Z': '𝘡',
+        '0': '𝟢', '1': '𝟣', '2': '𝟤', '3': '𝟥', '4': '𝟦', '5': '𝟧', '6': '𝟨', '7': '𝟩', '8': '𝟪', '9': '𝟫'
+    },
+    'sans_serif_bold': {
+        'a': '𝐚', 'b': '𝐛', 'c': '𝐜', 'd': '𝐝', 'e': '𝐞', 'f': '𝐟', 'g': '𝐠', 'h': '𝐡', 'i': '𝐢',
+        'j': '𝐣', 'k': '𝐤', 'l': '𝐥', 'm': '𝐦', 'n': '𝐧', 'o': '𝐨', 'p': '𝐩', 'q': '𝐪', 'r': '𝐫',
+        's': '𝐬', 't': '𝐭', 'u': '𝐮', 'v': '𝐯', 'w': '𝐰', 'x': '𝐱', 'y': '𝐲', 'z': '𝐳',
+        'A': '𝐀', 'B': '𝐁', 'C': '𝐂', 'D': '𝐃', 'E': '𝐄', 'F': '𝐅', 'G': '𝐆', 'H': '𝐇', 'I': '𝐈',
+        'J': '𝐉', 'K': '𝐊', 'L': '𝐋', 'M': '𝐌', 'N': '𝐍', 'O': '𝐎', 'P': '𝐏', 'Q': '𝐐', 'R': '𝐑',
+        'S': '𝐒', 'T': '𝐓', 'U': '𝐔', 'V': '𝐕', 'W': '𝐖', 'X': '𝐗', 'Y': '𝐘', 'Z': '𝐙',
+        '0': '𝟎', '1': '𝟏', '2': '𝟐', '3': '𝟑', '4': '𝟒', '5': '𝟓', '6': '𝟔', '7': '𝟕', '8': '𝟖', '9': '𝟗'
+    },
+    'sans_serif_regular': {
+        'a': '𝖺', 'b': '𝖻', 'c': '𝖼', 'd': '𝖽', 'e': '𝖾', 'f': '𝖿', 'g': '𝗀', 'h': '𝗁', 'i': '𝗂',
+        'j': '𝗃', 'k': '𝗄', 'l': '𝗅', 'm': '𝗆', 'n': '𝗇', 'o': '𝗈', 'p': '𝗉', 'q': '𝗊', 'r': '𝗋',
+        's': '𝗌', 't': '𝗍', 'u': '𝗎', 'v': '𝗏', 'w': '𝗐', 'x': '𝗑', 'y': '𝗒', 'z': '𝗓',
+        'A': '𝖠', 'B': '𝖡', 'C': '𝖢', 'D': '𝖣', 'E': '𝖤', 'F': '𝖥', 'G': '𝖦', 'H': '𝖧', 'I': '𝖨',
+        'J': '𝖩', 'K': '𝖪', 'L': '𝖫', 'M': '𝖬', 'N': '𝖭', 'O': '𝖮', 'P': '𝖯', 'Q': '𝖰', 'R': '𝖱',
+        'S': '𝖲', 'T': '𝖳', 'U': '𝖴', 'V': '𝖵', 'W': '𝖶', 'X': '𝖷', 'Y': '𝖸', 'Z': '𝖹',
+        '0': '𝟢', '1': '𝟣', '2': '𝟤', '3': '𝟥', '4': '𝟦', '5': '𝟧', '6': '𝟨', '7': '𝟩', '8': '𝟪', '9': '𝟫'
+    },
+    'sans_serif_regular_bold': {
+        'a': '𝗮', 'b': '𝗯', 'c': '𝗰', 'd': '𝗱', 'e': '𝗲', 'f': '𝗳', 'g': '𝗴', 'h': '𝗵', 'i': '𝗶',
+        'j': '𝗷', 'k': '𝗸', 'l': '𝗹', 'm': '𝗺', 'n': '𝗻', 'o': '𝗼', 'p': '𝗽', 'q': '𝗾', 'r': '𝗿',
+        's': '𝘀', 't': '𝘁', 'u': '𝘂', 'v': '𝘃', 'w': '𝘄', 'x': '𝘅', 'y': '𝘆', 'z': '𝘇',
+        'A': '𝗔', 'B': '𝗕', 'C': '𝗖', 'D': '𝗗', 'E': '𝗘', 'F': '𝗙', 'G': '𝗚', 'H': '𝗛', 'I': '𝗜',
+        'J': '𝗝', 'K': '𝗞', 'L': '𝗟', 'M': '𝗠', 'N': '𝗡', 'O': '𝗢', 'P': '𝗣', 'Q': '𝗤', 'R': '𝗥',
+        'S': '𝗦', 'T': '𝗧', 'U': '𝗨', 'V': '𝗩', 'W': '𝗪', 'X': '𝗫', 'Y': '𝗬', 'Z': '𝗭',
+        '0': '𝟬', '1': '𝟭', '2': '𝟮', '3': '𝟯', '4': '𝟰', '5': '𝟱', '6': '𝟲', '7': '𝟳', '8': '𝟴', '9': '𝟵'
+    },
+    'script': {
+        'a': '𝒶', 'b': '𝒷', 'c': '𝒸', 'd': '𝒹', 'e': '𝑒', 'f': '𝒻', 'g': '𝑔', 'h': '𝒽', 'i': '𝒾',
+        'j': '𝒿', 'k': '𝓀', 'l': '𝓁', 'm': '𝓂', 'n': '𝓃', 'o': '𝑜', 'p': '𝓅', 'q': '𝓆', 'r': '𝓇',
+        's': '𝓈', 't': '𝓉', 'u': '𝓊', 'v': '𝓋', 'w': '𝓌', 'x': '𝓍', 'y': '𝓎', 'z': '𝓏',
+        'A': '𝒜', 'B': '𝐵', 'C': '𝒞', 'D': '𝒟', 'E': '𝐸', 'F': '𝐹', 'G': '𝒢', 'H': '𝐻', 'I': '𝐼',
+        'J': '𝒥', 'K': '𝒦', 'L': '𝐿', 'M': '𝑀', 'N': '𝒩', 'O': '𝒪', 'P': '𝒫', 'Q': '𝒬', 'R': '𝑅',
+        'S': '𝒮', 'T': '𝒯', 'U': '𝒰', 'V': '𝒱', 'W': '𝒲', 'X': '𝒳', 'Y': '𝒴', 'Z': '𝒵',
+        '0': '0', '1': '1', '2': '2', '3': '3', '4': '4', '5': '5', '6': '6', '7': '7', '8': '8', '9': '9'
+    },
+    'script_bold': {
+        'a': '𝓪', 'b': '𝓫', 'c': '𝓬', 'd': '𝓭', 'e': '𝓮', 'f': '𝓯', 'g': '𝓰', 'h': '𝓱', 'i': '𝓲',
+        'j': '𝓳', 'k': '𝓴', 'l': '𝓵', 'm': '𝓶', 'n': '𝓷', 'o': '𝓸', 'p': '𝓹', 'q': '𝓺', 'r': '𝓻',
+        's': '𝓼', 't': '𝓽', 'u': '𝓾', 'v': '𝓿', 'w': '𝔀', 'x': '𝔁', 'y': '𝔂', 'z': '𝔃',
+        'A': '𝓐', 'B': '𝓑', 'C': '𝓒', 'D': '𝓓', 'E': '𝓔', 'F': '𝓕', 'G': '𝓖', 'H': '𝓗', 'I': '𝓘',
+        'J': '𝓙', 'K': '𝓚', 'L': '𝓛', 'M': '𝓜', 'N': '𝓝', 'O': '𝓞', 'P': '𝓟', 'Q': '𝓠', 'R': '𝓡',
+        'S': '𝓢', 'T': '𝓣', 'U': '𝓤', 'V': '𝓥', 'W': '𝓦', 'X': '𝓧', 'Y': '𝓨', 'Z': '𝓩',
+        '0': '0', '1': '1', '2': '2', '3': '3', '4': '4', '5': '5', '6': '6', '7': '7', '8': '8', '9': '9'
+    },
+    'monospace': {
+        'a': '𝚊', 'b': '𝚋', 'c': '𝚌', 'd': '𝚍', 'e': '𝚎', 'f': '𝚏', 'g': '𝚐', 'h': '𝚑', 'i': '𝚒',
+        'j': '𝚓', 'k': '𝚔', 'l': '𝚕', 'm': '𝚖', 'n': '𝚗', 'o': '𝚘', 'p': '𝚙', 'q': '𝚚', 'r': '𝚛',
+        's': '𝚜', 't': '𝚝', 'u': '𝚞', 'v': '𝚟', 'w': '𝚠', 'x': '𝚡', 'y': '𝚢', 'z': '𝚣',
+        'A': '𝙰', 'B': '𝙱', 'C': '𝙲', 'D': '𝙳', 'E': '𝙴', 'F': '𝙵', 'G': '𝙶', 'H': '𝙷', 'I': '𝙸',
+        'J': '𝙹', 'K': '𝙺', 'L': '𝙻', 'M': '𝙼', 'N': '𝙽', 'O': '𝙾', 'P': '𝙿', 'Q': '𝚀', 'R': '𝚁',
+        'S': '𝚂', 'T': '𝚃', 'U': '𝚄', 'V': '𝚅', 'W': '𝚆', 'X': '𝚇', 'Y': '𝚈', 'Z': '𝚉',
+        '0': '𝟶', '1': '𝟷', '2': '𝟸', '3': '𝟹', '4': '𝟺', '5': '𝟻', '6': '𝟼', '7': '𝟽', '8': '𝟾', '9': '𝟿'
+    },
+    'serif': {
+        'a': '𝘢', 'b': '𝘣', 'c': '𝘤', 'd': '𝘥', 'e': '𝘦', 'f': '𝘧', 'g': '𝘨', 'h': '𝘩', 'i': '𝘪',
+        'j': '𝘫', 'k': '𝘬', 'l': '𝘭', 'm': '𝘮', 'n': '𝘯', 'o': '𝘰', 'p': '𝘱', 'q': '𝘲', 'r': '𝘳',
+        's': '𝘴', 't': '𝘵', 'u': '𝘶', 'v': '𝘷', 'w': '𝘸', 'x': '𝘹', 'y': '𝘺', 'z': '𝘻',
+        'A': '𝘈', 'B': '𝘉', 'C': '𝘊', 'D': '𝘋', 'E': '𝘌', 'F': '𝘍', 'G': '𝘎', 'H': '𝘏', 'I': '𝘐',
+        'J': '𝘑', 'K': '𝘒', 'L': '𝘓', 'M': '𝘔', 'N': '𝘕', 'O': '𝘖', 'P': '𝘗', 'Q': '𝘘', 'R': '𝘙',
+        'S': '𝘚', 'T': '𝘛', 'U': '𝘜', 'V': '𝘝', 'W': '𝘞', 'X': '𝘟', 'Y': '𝘠', 'Z': '𝘡',
+        '0': '0', '1': '1', '2': '2', '3': '3', '4': '4', '5': '5', '6': '6', '7': '7', '8': '8', '9': '9'
+    },
+    'serif_bold': {
+        'a': '𝐚', 'b': '𝐛', 'c': '𝐜', 'd': '𝐝', 'e': '𝐞', 'f': '𝐟', 'g': '𝐠', 'h': '𝐡', 'i': '𝐢',
+        'j': '𝐣', 'k': '𝐤', 'l': '𝐥', 'm': '𝐦', 'n': '𝐧', 'o': '𝐨', 'p': '𝐩', 'q': '𝐪', 'r': '𝐫',
+        's': '𝐬', 't': '𝐭', 'u': '𝐮', 'v': '𝐯', 'w': '𝐰', 'x': '𝐱', 'y': '𝐲', 'z': '𝐳',
+        'A': '𝐀', 'B': '𝐁', 'C': '𝐂', 'D': '𝐃', 'E': '𝐄', 'F': '𝐅', 'G': '𝐆', 'H': '𝐇', 'I': '𝐈',
+        'J': '𝐉', 'K': '𝐊', 'L': '𝐋', 'M': '𝐌', 'N': '𝐍', 'O': '𝐎', 'P': '𝐏', 'Q': '𝐐', 'R': '𝐑',
+        'S': '𝐒', 'T': '𝐓', 'U': '𝐔', 'V': '𝐕', 'W': '𝐖', 'X': '𝐗', 'Y': '𝐘', 'Z': '𝐙',
+        '0': '𝟎', '1': '𝟏', '2': '𝟐', '3': '𝟑', '4': '𝟒', '5': '𝟓', '6': '𝟔', '7': '𝟕', '8': '𝟖', '9': '𝟗'
+    }
+}
+FONT_MAPS['small_caps_bold'] = FONT_MAPS['small_caps']
+FONT_MAPS['monospace_bold'] = FONT_MAPS['monospace']
+FONT_MAPS['default_bold'] = {
+    'a': '𝗮', 'b': '𝗯', 'c': '𝗰', 'd': '𝗱', 'e': '𝗲', 'f': '𝗳', 'g': '𝗴', 'h': '𝗵', 'i': '𝗶',
+    'j': '𝗷', 'k': '𝗸', 'l': '𝗹', 'm': '𝗺', 'n': '𝗻', 'o': '𝗼', 'p': '𝗽', 'q': '𝗾', 'r': '𝗿',
+    's': '𝘀', 't': '𝘁', 'u': '𝘂', 'v': '𝘃', 'w': '𝘄', 'x': '𝘅', 'y': '𝘆', 'z': '𝘇',
+    'A': '𝗔', 'B': '𝗕', 'C': '𝗖', 'D': '𝗗', 'E': '𝗘', 'F': '𝗙', 'G': '𝗚', 'H': '𝗛', 'I': '𝗜',
+    'J': '𝗝', 'K': '𝗞', 'L': '𝗟', 'M': '𝗠', 'N': '𝗡', 'O': '𝗢', 'P': '𝗣', 'Q': '𝗤', 'R': '𝗥',
+    'S': '𝗦', 'T': '𝗧', 'U': '𝗨', 'V': '𝗩', 'W': '𝗪', 'X': '𝗫', 'Y': '𝗬', 'Z': '𝗭',
+    '0': '𝟬', '1': '𝟭', '2': '𝟮', '3': '𝟯', '4': '𝟰', '5': '𝟱', '6': '𝟲', '7': '𝟳', '8': '𝟴', '9': '𝟵'
+}
 
-logging.basicConfig(
-    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-    level=os.getenv("LOG_LEVEL", "INFO").upper(),
-)
-LOG = logging.getLogger("movies-series-bot")
+# ============================================
+# ===       BOT SETUP & DB CONFIG          ===
+# ============================================
+load_dotenv()
+logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-QUALITY_OPTIONS: Final[tuple[str, ...]] = ("480p", "720p", "1080p", "4K")
-PAGE_SIZE: Final[int] = 8
-DESCRIPTION_PREVIEW_LIMIT: Final[int] = 850
-TELEGRAM_CAPTION_LIMIT: Final[int] = 1024
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+MONGO_URI = os.getenv("MONGO_URI")
+ADMIN_ID = int(os.getenv("ADMIN_ID", 0))
+LOG_CHANNEL_ID = os.getenv("LOG_CHANNEL_ID")
+WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
 
+if not BOT_TOKEN or not MONGO_URI or not ADMIN_ID:
+    logger.error("Error: Secrets missing. Check BOT_TOKEN, MONGO_URI, and ADMIN_ID.")
+    exit()
 
-def now() -> datetime:
-    return datetime.now(UTC)
+try:
+    logger.info("Connecting to MongoDB...")
+    client = MongoClient(MONGO_URI)
+    db = client['PrimeLevelBotDB']
+    users_collection = db['users']
+    contents_collection = db['contents'] # For both Movies and Series
+    config_collection = db['config']
+    post_log_collection = db['post_log']
+    
+    contents_collection.create_index([("content_type", ASCENDING), ("title_key", ASCENDING)], unique=True)
+    contents_collection.create_index([("content_type", ASCENDING), ("updated_at", DESCENDING)])
+    users_collection.create_index([("interaction_count", DESCENDING)])
+    
+    client.admin.command('ping')
+    logger.info("MongoDB connected successfully!")
+except Exception as e:
+    logger.error(f"MongoDB connection failed: {e}")
+    exit()
 
-
-def object_id(value: str):
-    """Convert a callback id safely without importing Mongo internals everywhere."""
-    from bson import ObjectId
-
-    return ObjectId(value)
-
+ITEMS_PER_PAGE = 10
+QUALITY_OPTIONS = ("480p", "720p", "1080p", "4K")
+DESCRIPTION_PREVIEW_LIMIT = 850
+TELEGRAM_CAPTION_LIMIT = 1024
 
 def compact_id() -> str:
-    """8 chars keeps Telegram callback_data comfortably below 64 bytes."""
+    """Unique ID generator for seasons and episodes"""
     return uuid.uuid4().hex[:8]
-
 
 def normalized_title(value: str) -> str:
     return " ".join(value.casefold().split())
 
+# ============================================
+# ===       ADMIN & CO-ADMIN CHECKER       ===
+# ============================================
+async def is_main_admin(user_id: int) -> bool:
+    return user_id == ADMIN_ID
 
-def clean_text(value: str, *, limit: int = 3000) -> str:
-    value = " ".join(value.strip().split())
-    return value[:limit]
-
-
-def valid_url(value: str) -> bool:
-    return bool(re.fullmatch(r"https?://[^\s]{3,2048}", value.strip(), re.IGNORECASE))
-
-
-def h(value: Any) -> str:
-    return html.escape(str(value), quote=False)
-
-
-@dataclass(frozen=True, slots=True)
-class Settings:
-    token: str
-    mongo_uri: str
-    mongo_db: str
-    admin_ids: frozenset[int]
-    webhook_public_url: str
-    webhook_path: str
-    webhook_secret: str
-    port: int
-
-    @classmethod
-    def from_environment(cls) -> "Settings":
-        load_dotenv()
-        missing: list[str] = []
-        for key in ("BOT_TOKEN", "MONGO_URI", "ADMIN_IDS", "WEBHOOK_PUBLIC_URL", "WEBHOOK_SECRET"):
-            if not os.getenv(key):
-                missing.append(key)
-        # Accept the variable names used by the user's older bot as well.
-        # Render exposes only variables saved for the active service/environment,
-        # so supporting both names avoids a needless breaking deployment change.
-        raw_admin_ids = os.getenv("ADMIN_IDS") or os.getenv("ADMIN_ID")
-        public_url_value = os.getenv("WEBHOOK_PUBLIC_URL") or os.getenv("WEBHOOK_URL")
-        webhook_secret = os.getenv("WEBHOOK_SECRET")
-        missing = [key for key, value in (("BOT_TOKEN", os.getenv("BOT_TOKEN")), ("MONGO_URI", os.getenv("MONGO_URI")), ("ADMIN_IDS or ADMIN_ID", raw_admin_ids), ("WEBHOOK_PUBLIC_URL or WEBHOOK_URL", public_url_value)) if not value]
-        if missing:
-            raise RuntimeError("Missing required .env values: " + ", ".join(missing))
-
-        # It is still best to set WEBHOOK_SECRET in Render. A fresh random
-        # secret remains safe for this deployment if it is omitted; Telegram is
-        # configured with the same value immediately during startup.
-        if not webhook_secret:
-            webhook_secret = secrets.token_urlsafe(32)
-            LOG.warning("WEBHOOK_SECRET is not set; using a new secret for this process. Set it in Render for stable configuration.")
-
-        try:
-            admins = frozenset(int(item.strip()) for item in os.environ["ADMIN_IDS"].split(",") if item.strip())
-            admins = frozenset(int(item.strip()) for item in raw_admin_ids.split(",") if item.strip())
-        except ValueError as exc:
-            raise RuntimeError("ADMIN_IDS must be comma-separated numeric Telegram user IDs") from exc
-            raise RuntimeError("ADMIN_IDS/ADMIN_ID must contain numeric Telegram user IDs") from exc
-        if not admins:
-            raise RuntimeError("At least one ADMIN_IDS value is required")
-
-        public_url = os.environ["WEBHOOK_PUBLIC_URL"].rstrip("/")
-        public_url = public_url_value.rstrip("/")
-        if not public_url.startswith("https://"):
-            raise RuntimeError("WEBHOOK_PUBLIC_URL must start with https://")
-
-        return cls(
-            token=os.environ["BOT_TOKEN"],
-            mongo_uri=os.environ["MONGO_URI"],
-            mongo_db=os.getenv("MONGO_DB", "MoviesSeriesBot"),
-            admin_ids=admins,
-            webhook_public_url=public_url,
-            webhook_path=os.getenv("WEBHOOK_PATH", "telegram").strip("/"),
-            webhook_secret=os.environ["WEBHOOK_SECRET"],
-            port=int(os.getenv("PORT", "8080")),
-        )
-
-
-# Every string emitted by the bot comes through tr().  User-entered content is
-# not translated and is escaped before it is rendered as Telegram HTML.
-EN: Final[dict[str, str]] = {
-    "welcome": "Welcome, {name}! Use the buttons below.",
-    "private_only": "Please open this link in the bot's private chat.",
-    "not_admin": "This action is for administrators only.",
-    "cancelled": "Cancelled.",
-    "admin": "Admin dashboard",
-    "add_content": "Add content",
-    "manage": "Manage content",
-    "post_generator": "Create post",
-    "settings": "Settings",
-    "statistics": "Statistics",
-    "broadcast": "Broadcast",
-    "back": "Back",
-    "cancel": "Cancel",
-    "add_movie": "Add movie",
-    "add_series": "Add web series",
-    "add_season": "Add season",
-    "add_episode": "Add episode",
-    "delete_season": "Delete season",
-    "delete_episode": "Delete episode",
-    "movies": "Movies",
-    "series": "Web series",
-    "choose_item": "Choose an item (page {page}).",
-    "no_items": "No items found.",
-    "ask_title": "Send the title.",
-    "ask_poster": "Send a poster photo, or use Skip.",
-    "ask_description": "Send a description, or use Skip.",
-    "skip": "Skip",
-    "choose_quality": "Select a quality to upload. You may add more than one, then press Done.",
-    "send_file": "Send the {quality} video or document now.",
-    "file_saved": "{quality} file saved.",
-    "done": "Done",
-    "need_file": "Add at least one file before saving.",
-    "confirm_content": "Check this content before saving:\n\n<b>{title}</b>\nType: {kind}\nFiles: {files}",
-    "save": "Save",
-    "saved": "Saved successfully.",
-    "already_exists": "A {kind} with this title already exists.",
-    "choose_series": "Choose a web series.",
-    "choose_season": "Choose a season.",
-    "ask_season_title": "Send the season title (for example: Season 1).",
-    "ask_episode_title": "Send the episode title (for example: Episode 1).",
-    "edit": "Edit",
-    "edit_title": "Edit title",
-    "edit_description": "Edit description",
-    "delete": "Delete",
-    "delete_confirm": "Delete <b>{title}</b>? This cannot be undone.",
-    "yes_delete": "Yes, delete",
-    "deleted": "Deleted.",
-    "ask_new_title": "Send the new title. This changes the stored content.",
-    "ask_new_description": "Send the new stored description, or /skip to clear it.",
-    "updated": "Updated.",
-    "generate_link": "Generate deep link",
-    "original_link": "Original Telegram link:\n<code>{link}</code>\n\nSend the shortened HTTPS link.",
-    "bad_link": "Send a valid http:// or https:// link.",
-    "post_edit_menu": "Before posting, edit the temporary post draft if needed. These edits will <b>not</b> change MongoDB.",
-    "ask_post_title": "Send the title only for this group post. MongoDB will not be changed.",
-    "ask_post_description": "Send the description only for this group post. Long descriptions are sent as a collapsible quote. MongoDB will not be changed.",
-    "set_destination": "Set group/channel",
-    "ask_destination": "Send the destination @channelusername or numeric chat ID.",
-    "preview": "Preview",
-    "publish": "Publish",
-    "destination_missing": "Set a destination before publishing.",
-    "published": "Post published to {chat_id}.",
-    "post_failed": "Could not publish the post. Verify the bot is admin there and the ID is correct.",
-    "language": "Language",
-    "select_language": "Choose the bot interface language.",
-    "language_saved": "Language changed to {language}.",
-    "autodelete": "Auto-delete time",
-    "ask_delete_seconds": "Send automatic deletion time in seconds. Send 0 to disable it.",
-    "delete_seconds_saved": "Auto-delete set to {seconds} seconds.",
-    "coadmins": "Co-admins",
-    "add_coadmin": "Add co-admin",
-    "remove_coadmin": "Remove co-admin",
-    "ask_coadmin": "Send the numeric Telegram user ID of the co-admin.",
-    "coadmin_saved": "Co-admin access updated.",
-    "broadcast_prompt": "Send the message to broadcast. It will be copied as-is after confirmation.",
-    "broadcast_confirm": "Send this message to {count} users?",
-    "broadcast_sent": "Broadcast finished: {sent} sent, {failed} failed/blocked.",
-    "invalid_input": "That input is not valid for this step. Use /cancel to stop.",
-    "content_not_found": "This content is no longer available.",
-    "select_quality": "Select quality for <b>{title}</b>.",
-    "sending": "Sending your file…",
-    "no_quality": "No file is available for that selection.",
-    "support": "Support",
-    "download": "Download",
-    "whole_series": "Whole series",
-    "season_post": "Season post",
-    "episode_post": "Episode post",
-    "next": "Next",
-    "previous": "Previous",
-}
-
-# Compact translations cover every UI key through English fallback for rare
-# operational errors; normal menus/prompts/buttons are fully localized.
-HI: Final[dict[str, str]] = {
-    "welcome": "Namaste {name}! Neeche buttons use karein.", "private_only": "Is link ko bot ke private chat mein kholiye.",
-    "not_admin": "Yeh action sirf admin ke liye hai.", "cancelled": "Cancel kar diya.", "admin": "Admin dashboard",
-    "add_content": "Content add karein", "manage": "Content manage karein", "post_generator": "Post banayein", "settings": "Settings",
-    "statistics": "Statistics", "broadcast": "Broadcast", "back": "Wapas", "cancel": "Cancel", "add_movie": "Movie add karein",
-    "add_series": "Web series add karein", "add_season": "Season add karein", "add_episode": "Episode add karein",
-    "delete_season": "Season delete karein", "delete_episode": "Episode delete karein", "movies": "Movies", "series": "Web series",
-    "choose_item": "Item select karein (page {page}).", "no_items": "Koi item nahi mila.", "ask_title": "Title bhejiye.",
-    "ask_poster": "Poster photo bhejiye, ya Skip karein.", "ask_description": "Description bhejiye, ya Skip karein.", "skip": "Skip",
-    "choose_quality": "Quality select karke file bhejiye; fir Done dabaiye.", "send_file": "Ab {quality} video ya document bhejiye.",
-    "file_saved": "{quality} file save ho gayi.", "done": "Done", "need_file": "Save se pehle kam se kam ek file add karein.",
-    "saved": "Safalta se save ho gaya.", "edit": "Edit", "edit_title": "Title edit", "edit_description": "Description edit", "delete": "Delete",
-    "yes_delete": "Haan, delete", "deleted": "Delete ho gaya.", "updated": "Update ho gaya.", "generate_link": "Deep link banayein",
-    "bad_link": "Sahi http:// ya https:// link bhejiye.", "set_destination": "Group/channel set karein", "ask_destination": "@channel username ya numeric chat ID bhejiye.",
-    "preview": "Preview", "publish": "Publish", "language": "Bhasha", "select_language": "Bot ki language select karein.",
-    "language_saved": "Language {language} ho gayi.", "autodelete": "Auto-delete time", "ask_delete_seconds": "Auto-delete seconds bhejiye; band ke liye 0.",
-    "delete_seconds_saved": "Auto-delete {seconds} seconds par set hai.", "coadmins": "Co-admins", "add_coadmin": "Co-admin add", "remove_coadmin": "Co-admin hataayein",
-    "ask_coadmin": "Co-admin ki numeric Telegram ID bhejiye.", "broadcast_prompt": "Broadcast message bhejiye.", "invalid_input": "Yeh input sahi nahi hai. Rokne ke liye /cancel.",
-    "content_not_found": "Yeh content ab available nahi hai.", "select_quality": "<b>{title}</b> ki quality select karein.", "sending": "File bhej raha hoon…",
-    "no_quality": "Is selection ke liye file nahi hai.", "support": "Support", "download": "Download", "whole_series": "Puri series", "season_post": "Season post", "episode_post": "Episode post",
-}
-
-HINGLISH: Final[dict[str, str]] = {
-    "welcome": "Salaam {name}! Neeche buttons use karo.", "private_only": "Is link ko bot ke private chat mein kholo.",
-    "not_admin": "Yeh action sirf admin ke liye hai.", "cancelled": "Operation cancel ho gaya.", "admin": "Admin panel",
-    "add_content": "Add content", "manage": "Manage content", "post_generator": "Post generator", "settings": "Settings", "statistics": "Stats", "broadcast": "Broadcast",
-    "back": "Back", "cancel": "Cancel", "add_movie": "Add movie", "add_series": "Add web series", "add_season": "Add season", "add_episode": "Add episode",
-    "delete_season": "Delete season", "delete_episode": "Delete episode", "movies": "Movies", "series": "Web series", "choose_item": "Item choose karo (page {page}).",
-    "no_items": "Abhi koi item nahi hai.", "ask_title": "Title bhejo.", "ask_poster": "Poster photo bhejo, ya Skip karo.", "ask_description": "Description bhejo, ya Skip karo.",
-    "skip": "Skip", "choose_quality": "Quality choose karke file bhejo, phir Done karo.", "send_file": "Ab {quality} video ya document bhejo.",
-    "file_saved": "{quality} file save ho gayi.", "done": "Done", "need_file": "Save se pehle minimum ek file add karo.", "saved": "Successfully save ho gaya.",
-    "edit": "Edit", "edit_title": "Edit title", "edit_description": "Edit description", "delete": "Delete", "yes_delete": "Haan delete", "deleted": "Delete ho gaya.",
-    "updated": "Update ho gaya.", "generate_link": "Generate deep link", "bad_link": "Valid http:// ya https:// link bhejo.",
-    "set_destination": "Set group/channel", "ask_destination": "@channel username ya numeric chat ID bhejo.", "preview": "Preview", "publish": "Publish", "language": "Language",
-    "select_language": "Bot language choose karo.", "language_saved": "Language {language} set ho gayi.", "autodelete": "Auto-delete time", "ask_delete_seconds": "Seconds bhejo; disable ke liye 0.",
-    "delete_seconds_saved": "Auto-delete {seconds} seconds set hai.", "coadmins": "Co-admins", "add_coadmin": "Add co-admin", "remove_coadmin": "Remove co-admin",
-    "ask_coadmin": "Co-admin ki numeric Telegram user ID bhejo.", "broadcast_prompt": "Broadcast message bhejo.", "invalid_input": "Yeh input valid nahi hai. Stop ke liye /cancel.",
-    "content_not_found": "Yeh content ab available nahi hai.", "select_quality": "<b>{title}</b> quality choose karo.", "sending": "Aapki file bhej raha hoon…", "no_quality": "Iske liye file available nahi hai.",
-    "support": "Support", "download": "Download", "whole_series": "Full series", "season_post": "Season post", "episode_post": "Episode post",
-}
-
-BN: Final[dict[str, str]] = {
-    "welcome": "স্বাগতম {name}! নিচের বোতাম ব্যবহার করুন।", "private_only": "লিঙ্কটি বটের ব্যক্তিগত চ্যাটে খুলুন।", "not_admin": "এই কাজটি শুধু অ্যাডমিনের জন্য।",
-    "cancelled": "বাতিল করা হয়েছে।", "admin": "অ্যাডমিন ড্যাশবোর্ড", "add_content": "কনটেন্ট যোগ করুন", "manage": "কনটেন্ট ম্যানেজ করুন", "post_generator": "পোস্ট তৈরি করুন", "settings": "সেটিংস",
-    "statistics": "পরিসংখ্যান", "broadcast": "ব্রডকাস্ট", "back": "ফিরে যান", "cancel": "বাতিল", "add_movie": "মুভি যোগ করুন", "add_series": "ওয়েব সিরিজ যোগ করুন", "add_season": "সিজন যোগ করুন", "add_episode": "এপিসোড যোগ করুন",
-    "delete_season": "সিজন মুছুন", "delete_episode": "এপিসোড মুছুন", "movies": "মুভি", "series": "ওয়েব সিরিজ", "choose_item": "আইটেম বেছে নিন (পৃষ্ঠা {page})।", "no_items": "কোনও আইটেম পাওয়া যায়নি।",
-    "ask_title": "শিরোনাম পাঠান।", "ask_poster": "পোস্টার ছবি পাঠান, অথবা Skip করুন।", "ask_description": "বিবরণ পাঠান, অথবা Skip করুন।", "skip": "Skip", "done": "শেষ", "edit": "সম্পাদনা", "delete": "মুছুন", "preview": "প্রিভিউ", "publish": "প্রকাশ করুন", "language": "ভাষা", "select_language": "বটের ভাষা বেছে নিন।", "support": "সাপোর্ট", "download": "ডাউনলোড",
-}
-
-AR: Final[dict[str, str]] = {
-    "welcome": "مرحباً {name}! استخدم الأزرار أدناه.", "private_only": "افتح الرابط في المحادثة الخاصة مع البوت.", "not_admin": "هذا الإجراء للمشرفين فقط.", "cancelled": "تم الإلغاء.",
-    "admin": "لوحة الإدارة", "add_content": "إضافة محتوى", "manage": "إدارة المحتوى", "post_generator": "إنشاء منشور", "settings": "الإعدادات", "statistics": "الإحصاءات", "broadcast": "بث", "back": "رجوع", "cancel": "إلغاء",
-    "add_movie": "إضافة فيلم", "add_series": "إضافة مسلسل", "add_season": "إضافة موسم", "add_episode": "إضافة حلقة", "delete_season": "حذف الموسم", "delete_episode": "حذف الحلقة", "movies": "الأفلام", "series": "المسلسلات",
-    "choose_item": "اختر عنصراً (صفحة {page}).", "no_items": "لا توجد عناصر.", "ask_title": "أرسل العنوان.", "ask_poster": "أرسل صورة الملصق أو اختر Skip.", "ask_description": "أرسل الوصف أو اختر Skip.", "skip": "تخطي", "done": "تم", "edit": "تعديل", "delete": "حذف", "preview": "معاينة", "publish": "نشر", "language": "اللغة", "select_language": "اختر لغة البوت.", "support": "دعم", "download": "تنزيل",
-}
-
-PACKS: Final[dict[str, dict[str, str]]] = {"en": EN, "hi": HI, "hinglish": HINGLISH, "bn": BN, "ar": AR}
-LANGUAGE_NAMES: Final[dict[str, str]] = {"en": "English", "hi": "Hindi", "hinglish": "Hinglish", "bn": "Bengali", "ar": "Arabic"}
-
-
-def tr(language: str, key: str, **values: Any) -> str:
-    template = PACKS.get(language, EN).get(key, EN.get(key, key))
-    safe = {name: h(value) for name, value in values.items()}
-    try:
-        return template.format(**safe)
-    except (KeyError, ValueError):
-        LOG.warning("Bad translation template for key %s", key)
-        return EN.get(key, key)
-
-
-class Store:
-    """Async MongoDB access, indexes and a tiny settings cache."""
-
-    def __init__(self, settings: Settings) -> None:
-        # Native asyncio driver: Motor is deprecated and ran Mongo work through
-        # a thread pool.  Keep this client on the single PTB event loop only.
-        self.client = AsyncMongoClient(settings.mongo_uri, serverSelectionTimeoutMS=5000, maxPoolSize=50)
-        db = self.client[settings.mongo_db]
-        self.contents = db.contents
-        self.users = db.users
-        self.config = db.config
-        self.post_log = db.post_log
-        self._cached_config: dict[str, Any] | None = None
-        self._cache_at = 0.0
-        self._config_lock = asyncio.Lock()
-
-    async def initialize(self) -> None:
-        await self.client.admin.command("ping")
-        await self.contents.create_index([("content_type", ASCENDING), ("title_key", ASCENDING)], unique=True)
-        await self.contents.create_index([("content_type", ASCENDING), ("updated_at", DESCENDING)])
-        await self.contents.create_index([("title", "text"), ("description", "text")])
-        await self.users.create_index([("last_seen", DESCENDING)])
-        await self.post_log.create_index([("created_at", DESCENDING)])
-        await self.config.update_one(
-            {"_id": "bot"},
-            {"$setOnInsert": {"language": "hinglish", "auto_delete_seconds": 0, "co_admins": [], "support_url": ""}},
-            upsert=True,
-        )
-        LOG.info("MongoDB indexes are ready")
-
-    async def get_config(self, *, fresh: bool = False) -> dict[str, Any]:
-        if not fresh and self._cached_config and time.monotonic() - self._cache_at < 20:
-            return self._cached_config
-        async with self._config_lock:
-            if not fresh and self._cached_config and time.monotonic() - self._cache_at < 20:
-                return self._cached_config
-            config = await self.config.find_one({"_id": "bot"}) or {}
-            self._cached_config = config
-            self._cache_at = time.monotonic()
-            return config
-
-    async def update_config(self, values: dict[str, Any]) -> None:
-        await self.config.update_one({"_id": "bot"}, {"$set": values}, upsert=True)
-        self._cached_config = None
-
-    async def touch_user(self, update: Update) -> None:
-        user = update.effective_user
-        if not user:
-            return
-        await self.users.update_one(
-            {"_id": user.id},
-            {"$set": {"name": user.full_name[:256], "username": user.username, "last_seen": now()}, "$setOnInsert": {"first_seen": now()}},
-            upsert=True,
-        )
-
-    async def add_content(self, draft: dict[str, Any]) -> str:
-        title = draft["title"]
-        document = {
-            "content_type": draft["content_type"],
-            "title": title,
-            "title_key": normalized_title(title),
-            "description": draft.get("description", ""),
-            "poster_file_id": draft.get("poster_file_id"),
-            "files": draft.get("files", {}),
-            "seasons": draft.get("seasons", []),
-            "created_at": now(),
-            "updated_at": now(),
-            "schema_version": 2,
-        }
-        result = await self.contents.insert_one(document)
-        return str(result.inserted_id)
-
-    async def find_content(self, content_id: str) -> dict[str, Any] | None:
-        try:
-            return await self.contents.find_one({"_id": object_id(content_id)})
-        except Exception:
-            return None
-
-    async def list_content(self, kind: str, page: int) -> tuple[list[dict[str, Any]], int]:
-        page = max(0, page)
-        total = await self.contents.count_documents({"content_type": kind})
-        cursor = self.contents.find({"content_type": kind}).sort("updated_at", DESCENDING).skip(page * PAGE_SIZE).limit(PAGE_SIZE)
-        return [doc async for doc in cursor], total
-
-    async def delete_content(self, content_id: str) -> bool:
-        try:
-            return bool((await self.contents.delete_one({"_id": object_id(content_id)})).deleted_count)
-        except Exception:
-            return False
-
-    async def update_content(self, content_id: str, values: dict[str, Any]) -> bool:
-        try:
-            values["updated_at"] = now()
-            return bool((await self.contents.update_one({"_id": object_id(content_id)}, {"$set": values})).modified_count)
-        except DuplicateKeyError:
-            raise
-        except Exception:
-            return False
-
-    async def add_season(self, content_id: str, season: dict[str, Any]) -> bool:
-        try:
-            result = await self.contents.update_one(
-                {"_id": object_id(content_id), "content_type": "series"},
-                {"$push": {"seasons": season}, "$set": {"updated_at": now()}},
-            )
-            return bool(result.modified_count)
-        except Exception:
-            return False
-
-    async def add_episode(self, content_id: str, season_id: str, episode: dict[str, Any]) -> bool:
-        try:
-            result = await self.contents.update_one(
-                {"_id": object_id(content_id), "content_type": "series"},
-                {"$push": {"seasons.$[season].episodes": episode}, "$set": {"updated_at": now()}},
-                array_filters=[{"season.sid": season_id}],
-            )
-            return bool(result.modified_count)
-        except Exception:
-            return False
-
-    async def delete_season(self, content_id: str, season_id: str) -> bool:
-        try:
-            result = await self.contents.update_one(
-                {"_id": object_id(content_id), "content_type": "series"},
-                {"$pull": {"seasons": {"sid": season_id}}, "$set": {"updated_at": now()}},
-            )
-            return bool(result.modified_count)
-        except Exception:
-            return False
-
-    async def delete_episode(self, content_id: str, season_id: str, episode_id: str) -> bool:
-        try:
-            result = await self.contents.update_one(
-                {"_id": object_id(content_id), "content_type": "series"},
-                {"$pull": {"seasons.$[season].episodes": {"eid": episode_id}}, "$set": {"updated_at": now()}},
-                array_filters=[{"season.sid": season_id}],
-            )
-            return bool(result.modified_count)
-        except Exception:
-            return False
-
-
-def language_of(config: dict[str, Any]) -> str:
-    language = config.get("language", "hinglish")
-    return language if language in PACKS else "hinglish"
-
-
-def is_main_admin(settings: Settings, update: Update) -> bool:
-    return bool(update.effective_user and update.effective_user.id in settings.admin_ids)
-
-
-async def is_admin(store: Store, settings: Settings, update: Update) -> bool:
-    if is_main_admin(settings, update):
+async def is_co_admin(user_id: int) -> bool:
+    if user_id == ADMIN_ID:
         return True
-    user = update.effective_user
-    if not user:
-        return False
-    config = await store.get_config()
-    return user.id in config.get("co_admins", [])
+    config = await get_config()
+    return user_id in config.get("co_admins", [])
 
+async def increment_user_interaction(user_id: int):
+    try:
+        users_collection.update_one(
+            {"_id": user_id},
+            {"$inc": {"interaction_count": 1}},
+            upsert=True
+        )
+    except Exception as e:
+        logger.error(f"Interaction count update error: {e}")
 
-async def reply(update: Update, text: str, **kwargs: Any) -> Any:
-    message = update.effective_message
-    if not message:
-        return None
-    return await message.reply_text(text, parse_mode=ParseMode.HTML, **kwargs)
+# ============================================
+# ===       CONFIG & MESSAGE FORMATTER     ===
+# ============================================
+async def get_default_messages():
+    return {
+        "welcome": "Welcome, {name}! Use the buttons below.",
+        "user_welcome_admin": "Salaam, Admin! Admin panel ke liye /menu use karein.",
+        "user_welcome_basic": "Salaam, {full_name}! Apna user menu dekhne ke liye /user use karein.",
+        "user_not_admin": "Aap admin nahi hain.",
+        "user_dl_dm_alert": "✅ <f>Check your DM (private chat) with me!</f>",
+        "user_dl_movie_not_found": "❌ <f>Error: Content nahi mila.</f>",
+        "user_dl_file_error": "❌ <f>Error! {quality} file nahi bhej paya. Please try again.</f>",
+        "user_dl_fetching": "⏳ <f>Fetching files...</f>",
+        "user_dl_sending_file": "✅ <b>{movie_name}</b> | <b>{quality}</b>\n\n<f>Aapki file bhej raha hoon...</f>",
+        "user_dl_select_quality": "<b>{title}</b>\n\n<f>Quality select karein:</f>",
+        "file_warning": "⚠️ <b><f>Yeh file {minutes} minute(s) mein automatically delete ho jaayegi.</f></b>",
+        "user_donate_qr_text": "❤️ <b><f>Support Us!</f></b>\n\n<f>Agar aapko hamara kaam pasand aata hai, toh aap humein support kar sakte hain.</f>",
+        "admin_cancel": "<f>Operation cancel kar diya gaya hai.</f>",
+        "post_gen_caption": "🎬 <b>{title}</b>\n\n{description}\n\n<f>Neeche button se download karein!</f>"
+    }
 
+async def get_config():
+    config = config_collection.find_one({"_id": "bot_config"})
+    default_messages = await get_default_messages()
 
-def keyboard(rows: list[list[tuple[str, str]]]) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([[InlineKeyboardButton(text, callback_data=data) for text, data in row] for row in rows])
+    if not config:
+        config = {
+            "_id": "bot_config",
+            "language": "en",
+            "donate_qr_id": None,
+            "links": {"backup": "https://t.me/", "download": None, "help": "https://t.me/"},
+            "user_menu_photo_id": None,
+            "default_destination": None,
+            "delete_seconds": 300,
+            "messages": default_messages,
+            "co_admins": [],
+            "appearance": {"font": "default", "style": "normal"},
+            "quotes_enabled": True
+        }
+        config_collection.insert_one(config)
+        return config
+    
+    # Auto-update missing keys
+    needs_update = False
+    for key in ["delete_seconds", "default_destination", "quotes_enabled", "co_admins", "appearance", "links", "messages"]:
+        if key not in config:
+            needs_update = True
+    
+    if needs_update:
+        config.setdefault("quotes_enabled", True)
+        config.setdefault("default_destination", None)
+        config.setdefault("delete_seconds", 300)
+        config.setdefault("co_admins", [])
+        config.setdefault("appearance", {"font": "default", "style": "normal"})
+        config.setdefault("links", {"backup": "https://t.me/", "download": None, "help": "https://t.me/"})
+        config.setdefault("messages", default_messages)
+        config_collection.update_one({"_id": "bot_config"}, {"$set": config})
 
+    return config
 
-def url_keyboard(rows: list[list[tuple[str, str]]]) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([[InlineKeyboardButton(text, url=url) for text, url in row] for row in rows])
+async def apply_font_formatting(raw_text: str, font_settings: dict) -> str:
+    font = font_settings.get('font', 'default')
+    style = font_settings.get('style', 'normal')
+    
+    if font == 'default' and style == 'normal':
+        return raw_text.replace('<f>', '').replace('</f>', '')
 
+    map_key = f"{font}_{style}" if style == 'bold' else font
+    font_map = FONT_MAPS.get(map_key, {})
+    
+    if not font_map:
+        map_key = 'default_bold' if style == 'bold' else 'default'
+        font_map = FONT_MAPS.get(map_key, {})
+        if not font_map:
+            return raw_text.replace('<f>', '').replace('</f>', '')
 
-def quote(description: str) -> str:
-    description = h(description.strip())
+    def replace_chars_html_safe(text_chunk):
+        return "".join([font_map.get(char, char) for char in text_chunk])
+
+    def process_tags(match):
+        content = match.group(1)
+        parts = re.split(r'(<[^>]+>)', content)
+        
+        processed_parts = []
+        for part in parts:
+            if re.match(r'<[^>]+>', part):
+                processed_parts.append(part)
+            else:
+                processed_parts.append(replace_chars_html_safe(part))
+        return "".join(processed_parts)
+
+    try:
+        formatted_text = re.sub(r'<f>(.*?)</f>', process_tags, raw_text, flags=re.DOTALL)
+        return formatted_text
+    except Exception as e:
+        logger.error(f"Font formatting error: {e}")
+        return raw_text.replace('<f>', '').replace('</f>', '')
+
+async def format_message(context: ContextTypes.DEFAULT_TYPE, key: str, variables: dict = None) -> str:
+    config = await get_config()
+    default_messages = await get_default_messages()
+    raw_text = config.get("messages", {}).get(key, default_messages.get(key, f"MISSING_KEY: {key}"))
+    
+    if variables:
+        safe_variables = {}
+        for k, v in variables.items():
+            if isinstance(v, str):
+                safe_variables[k] = v.replace('<', '&lt;').replace('>', '&gt;')
+            else:
+                safe_variables[k] = v
+        try:
+            text_with_vars = raw_text.format(**safe_variables)
+        except Exception as e:
+            logger.error(f"Message format error: {e}")
+            text_with_vars = raw_text
+    else:
+        text_with_vars = raw_text
+
+    font_settings = config.get("appearance", {"font": "default", "style": "normal"})
+    return await apply_font_formatting(text_with_vars, font_settings)
+
+def quote_text(description: str, enable_quotes: bool) -> str:
+    description = html.escape(description.strip(), quote=False)
     if not description:
         return ""
-    # Telegram HTML supports expandable blockquotes in current clients.
-    tag = "blockquote expandable" if len(description) > 180 else "blockquote"
-    return f"<{tag}>{description}</blockquote>"
+    if enable_quotes:
+        tag = "blockquote expandable" if len(description) > 180 else "blockquote"
+        return f"<{tag}>{description}</blockquote>"
+    return description
 
+# ============================================
+# ===       PAGINATION HELPER              ===
+# ============================================
+def build_grid_keyboard(buttons, items_per_row=2):
+    keyboard = []
+    row = []
+    for button in buttons:
+        row.append(button)
+        if len(row) == items_per_row:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+    return keyboard
 
-def post_caption(title: str, description: str) -> str:
-    return f"<b>{h(title)}</b>\n\n{quote(description)}".strip()
+async def build_paginated_keyboard(
+    collection,
+    page: int,
+    page_callback_prefix: str,
+    item_callback_prefix: str,
+    back_callback: str,
+    filter_query: dict = None,
+):
+    if filter_query is None:
+        filter_query = {}
+        
+    skip = page * ITEMS_PER_PAGE
+    total_items = collection.count_documents(filter_query)
+    
+    items = list(collection.find(filter_query).sort("updated_at", DESCENDING).skip(skip).limit(ITEMS_PER_PAGE))
+    
+    if not items and page == 0:
+        return None, InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data=back_callback)]])
+        
+    buttons = []
+    for item in items:
+        if "title" in item:
+            buttons.append(InlineKeyboardButton(item['title'], callback_data=f"{item_callback_prefix}{str(item['_id'])}"))
 
+    keyboard = build_grid_keyboard(buttons, items_per_row=2)
+    
+    page_buttons = []
+    if page > 0:
+        page_buttons.append(InlineKeyboardButton("⬅️ Prev", callback_data=f"{page_callback_prefix}{page - 1}"))
+    if (page + 1) * ITEMS_PER_PAGE < total_items:
+        page_buttons.append(InlineKeyboardButton("Next ➡️", callback_data=f"{page_callback_prefix}{page + 1}"))
+        
+    if page_buttons:
+        keyboard.append(page_buttons)
+        
+    keyboard.append([InlineKeyboardButton("⬅️ Back", callback_data=back_callback)])
+    
+    return items, InlineKeyboardMarkup(keyboard)
+# ============================================
+# ===       PRIME LEVEL BOT (PART 2)       ===
+# ===       CONVERSATION STATES & ADMIN    ===
+# ============================================
 
-def truncate_html_caption(caption: str) -> str:
-    """A safe compact fallback; full text is sent in the next message."""
-    if len(caption) <= TELEGRAM_CAPTION_LIMIT:
-        return caption
-    return caption[: DESCRIPTION_PREVIEW_LIMIT].rsplit(" ", 1)[0] + "…"
+# Conversation States
+(
+    M_GET_TITLE, M_GET_POSTER, M_GET_DESC, M_GET_QUAL,
+    S_GET_TITLE, S_GET_POSTER, S_GET_DESC, S_GET_SEASON, S_GET_EPISODE, S_GET_QUAL,
+    POST_GET_ITEM, POST_GET_LINK, POST_GET_DEST, POST_PREVIEW, POST_EDIT_TITLE, POST_EDIT_DESC,
+    MSG_GET_INPUT, CUSTOM_POST_POSTER, CUSTOM_POST_CAPTION, CUSTOM_POST_BTN_TEXT, CUSTOM_POST_BTN_URL,
+    SET_DEST_INPUT, DEL_TIME_INPUT, COADMIN_ADD, COADMIN_REM, BRD_INPUT, GET_QR_INPUT, LINK_INPUT
+) = range(28)
 
+async def cancel_flow(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Cancels any ongoing conversation and returns to Admin Menu"""
+    context.user_data.clear()
+    text = await format_message(context, "admin_cancel")
+    if update.callback_query:
+        await update.callback_query.answer("Cancelled!")
+        await admin_command(update, context, from_callback=True)
+    else:
+        await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+        await admin_command(update, context, from_callback=False)
+    return ConversationHandler.END
 
-def deep_link(bot_username: str, content_id: str, season_id: str | None = None, episode_id: str | None = None) -> str:
-    payload = f"d-{content_id}"
-    if season_id:
-        payload += f"-{season_id}"
-    if episode_id:
-        payload += f"-{episode_id}"
-    return f"https://t.me/{bot_username}?start={payload}"
+# ============================================
+# ===       MAIN ADMIN DASHBOARD           ===
+# ============================================
+async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE, from_callback: bool = False):
+    user_id = update.effective_user.id
+    if not await is_co_admin(user_id):
+        if not from_callback:
+            text = await format_message(context, "user_not_admin")
+            await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+        return
 
+    keyboard = [
+        [InlineKeyboardButton("➕ Add Content", callback_data="menu_add_content"),
+         InlineKeyboardButton("🗑️ Manage Content", callback_data="menu_manage_content")],
+        [InlineKeyboardButton("✍️ Post Generator", callback_data="menu_post_gen"),
+         InlineKeyboardButton("🔗 Gen Link", callback_data="menu_gen_link")],
+        [InlineKeyboardButton("📝 Message Settings", callback_data="menu_msg_settings"),
+         InlineKeyboardButton("⚙️ Bot Settings", callback_data="menu_bot_settings")]
+    ]
+    
+    if await is_main_admin(user_id):
+        keyboard.append([InlineKeyboardButton("📢 Broadcast & Stats", callback_data="menu_broadcast_stats")])
+        admin_text = "👑 <b>Prime Admin Dashboard</b> 👑\n\nMain Admin Panel. Select an option below to manage your bot:"
+    else:
+        admin_text = "👑 <b>Co-Admin Dashboard</b> 👑\n\nSelect an option below to manage content:"
 
-class PerUserLocks:
-    """Webhook requests stay fast while one user's conversation stays ordered."""
+    reply_markup = InlineKeyboardMarkup(keyboard)
 
-    def __init__(self) -> None:
-        self._locks: dict[int, asyncio.Lock] = {}
-
-    async def run(self, update: Update, callback: Callable[[], Awaitable[None]]) -> None:
-        key = (update.effective_user.id if update.effective_user else update.effective_chat.id if update.effective_chat else 0)
-        lock = self._locks.setdefault(key, asyncio.Lock())
-        async with lock:
-            await callback()
-
-
-class MovieSeriesBot:
-    """Telegram UI and workflows.  Temporary post edits live only in user_data."""
-
-    def __init__(self, store: Store, settings: Settings) -> None:
-        self.store = store
-        self.settings = settings
-
-    async def _config_language(self) -> tuple[dict[str, Any], str]:
-        config = await self.store.get_config()
-        return config, language_of(config)
-
-    async def _admin_or_notice(self, update: Update) -> tuple[dict[str, Any], str] | None:
-        config, language = await self._config_language()
-        if await is_admin(self.store, self.settings, update):
-            return config, language
-        if update.callback_query:
-            await update.callback_query.answer(tr(language, "not_admin"), show_alert=True)
-        else:
-            await reply(update, tr(language, "not_admin"))
-        return None
-
-    @staticmethod
-    def _flow(context: ContextTypes.DEFAULT_TYPE) -> dict[str, Any] | None:
-        flow = context.user_data.get("flow")
-        return flow if isinstance(flow, dict) else None
-
-    @staticmethod
-    def _clear_flow(context: ContextTypes.DEFAULT_TYPE) -> None:
-        context.user_data.pop("flow", None)
-
-    async def _answer(self, update: Update, text: str | None = None, *, alert: bool = False) -> None:
-        if update.callback_query:
-            try:
-                await update.callback_query.answer(text, show_alert=alert)
-            except BadRequest:
-                pass
-
-    async def _send_admin_home(self, update: Update, language: str) -> None:
-        buttons = keyboard([
-            [(tr(language, "add_content"), "adm:add"), (tr(language, "manage"), "adm:manage")],
-            [(tr(language, "post_generator"), "adm:post"), (tr(language, "generate_link"), "adm:links")],
-            [(tr(language, "settings"), "adm:settings"), (tr(language, "statistics"), "adm:stats")],
-            [(tr(language, "broadcast"), "adm:broadcast")],
-        ])
-        if update.callback_query:
-            await update.callback_query.edit_message_text(f"<b>{tr(language, 'admin')}</b>", reply_markup=buttons, parse_mode=ParseMode.HTML)
-        else:
-            await reply(update, f"<b>{tr(language, 'admin')}</b>", reply_markup=buttons)
-
-    async def _send_list(self, update: Update, language: str, kind: str, action: str, page: int = 0) -> None:
-        docs, total = await self.store.list_content(kind, page)
-        if not docs:
-            text = tr(language, "no_items")
-            markup = keyboard([[(tr(language, "back"), "adm:home")]])
-        else:
-            title = tr(language, "choose_item", page=page + 1)
-            rows = [[(f"{index + page * PAGE_SIZE + 1}. {doc['title'][:45]}", f"pick:{action}:{doc['_id']}")] for index, doc in enumerate(docs)]
-            nav: list[tuple[str, str]] = []
-            if page:
-                nav.append((f"← {tr(language, 'previous')}", f"list:{kind}:{action}:{page - 1}"))
-            if (page + 1) * PAGE_SIZE < total:
-                nav.append((f"{tr(language, 'next')} →", f"list:{kind}:{action}:{page + 1}"))
-            if nav:
-                rows.append(nav)
-            rows.append([(tr(language, "back"), "adm:home")])
-            text, markup = title, keyboard(rows)
-        if update.callback_query:
-            await update.callback_query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
-        else:
-            await reply(update, text, reply_markup=markup)
-
-    async def command_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        await self.store.touch_user(update)
-        _, language = await self._config_language()
-        payload = context.args[0] if context.args else ""
-        if payload.startswith("d-"):
-            bits = payload.split("-")
-            # d-<24-char ObjectId>[-<sid>[-<eid>]]: sid/eid are fixed 8-char ids.
-            if len(bits) in (2, 3, 4):
-                await self._show_deep_content(update, context, bits[1], bits[2] if len(bits) > 2 else None, bits[3] if len(bits) > 3 else None)
-                return
-        name = update.effective_user.full_name if update.effective_user else ""
-        markup = keyboard([[(tr(language, "admin"), "adm:home")]]) if await is_admin(self.store, self.settings, update) else None
-        await reply(update, tr(language, "welcome", name=name), reply_markup=markup)
-
-    async def command_admin(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        await self.store.touch_user(update)
-        allowed = await self._admin_or_notice(update)
-        if allowed:
-            await self._send_admin_home(update, allowed[1])
-
-    async def command_cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        self._clear_flow(context)
-        _, language = await self._config_language()
-        await reply(update, tr(language, "cancelled"))
-
-    async def callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        await self.store.touch_user(update)
+    if from_callback:
         query = update.callback_query
-        if not query:
-            return
-        data = query.data or ""
-        # User download selectors are intentionally available without admin rights.
-        if data.startswith("open:") or data.startswith("quality:"):
-            await self._user_callback(update, context, data)
-            return
-
-        allowed = await self._admin_or_notice(update)
-        if not allowed:
-            return
-        _, language = allowed
-        await self._answer(update)
         try:
-            await self._admin_callback(update, context, language, data)
-        except Exception:
-            LOG.exception("Unhandled admin callback: %s", data)
-            await query.edit_message_text(tr(language, "invalid_input"), reply_markup=keyboard([[(tr(language, "back"), "adm:home")]]), parse_mode=ParseMode.HTML)
-
-    async def _admin_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE, language: str, data: str) -> None:
-        query = update.callback_query
-        assert query
-        if data.startswith("viewaddseason:"):
-            content_id = data.split(":", 1)[1]
-            context.user_data["flow"] = {"mode": "add_season", "step": "title", "content_id": content_id, "draft": {"sid": compact_id(), "episodes": []}}
-            await query.edit_message_text(tr(language, "ask_season_title"), parse_mode=ParseMode.HTML)
-            return
-        if data.startswith("viewaddepisode:"):
-            content_id = data.split(":", 1)[1]
-            doc = await self.store.find_content(content_id)
-            if not doc:
-                return
-            context.user_data["flow"] = {"mode": "add_episode", "step": "select_season", "content_id": content_id}
-            await self._show_season_picker(update, language, doc, "epseason")
-            return
-        if data.startswith("epseason:"):
-            _, content_id, season_id = data.split(":", 2)
-            flow = self._flow(context)
-            if flow:
-                flow.update({"mode": "add_episode", "step": "title", "content_id": content_id, "season_id": season_id, "draft": {"eid": compact_id(), "files": {}}})
-                await query.edit_message_text(tr(language, "ask_episode_title"), parse_mode=ParseMode.HTML)
-            return
-        if data.startswith("delseasonpick:"):
-            _, content_id, season_id = data.split(":", 2)
-            doc = await self.store.find_content(content_id)
-            season = self._season(doc, season_id) if doc else None
-            if season:
-                await query.edit_message_text(tr(language, "delete_confirm", title=season["title"]), parse_mode=ParseMode.HTML, reply_markup=keyboard([[(tr(language, "yes_delete"), f"delseason:{content_id}:{season_id}")], [(tr(language, "cancel"), "adm:manage")]]))
-            return
-        if data.startswith("delepisodepick:"):
-            _, content_id, season_id = data.split(":", 2)
-            doc = await self.store.find_content(content_id)
-            season = self._season(doc, season_id) if doc else None
-            if not season or not season.get("episodes"):
-                await query.edit_message_text(tr(language, "no_items"), parse_mode=ParseMode.HTML)
-                return
-            rows = [[(episode["title"][:50], f"delepisodeconfirm:{content_id}:{season_id}:{episode['eid']}")] for episode in season["episodes"]]
-            rows.append([(tr(language, "back"), "adm:manage")])
-            await query.edit_message_text(tr(language, "choose_item", page=1), parse_mode=ParseMode.HTML, reply_markup=keyboard(rows))
-            return
-        if data.startswith("delepisodeconfirm:"):
-            _, content_id, season_id, episode_id = data.split(":", 3)
-            doc = await self.store.find_content(content_id)
-            episode = self._episode(self._season(doc, season_id) if doc else None, episode_id)
-            if episode:
-                await query.edit_message_text(tr(language, "delete_confirm", title=episode["title"]), parse_mode=ParseMode.HTML, reply_markup=keyboard([[(tr(language, "yes_delete"), f"delepisode:{content_id}:{season_id}:{episode_id}")], [(tr(language, "cancel"), "adm:manage")]]))
-            return
-        if data == "adm:home":
-            self._clear_flow(context)
-            await self._send_admin_home(update, language)
-            return
-        if data == "adm:add":
-            await query.edit_message_text(
-                tr(language, "add_content"), parse_mode=ParseMode.HTML,
-                reply_markup=keyboard([
-                    [(tr(language, "add_movie"), "add:movie"), (tr(language, "add_series"), "add:series")],
-                    [(tr(language, "add_season"), "series:addseason"), (tr(language, "add_episode"), "series:addepisode")],
-                    [(tr(language, "back"), "adm:home")],
-                ]),
-            )
-            return
-        if data in {"add:movie", "add:series"}:
-            kind = "movie" if data.endswith("movie") else "series"
-            context.user_data["flow"] = {"mode": "add_content", "step": "title", "draft": {"content_type": kind, "files": {}, "seasons": []}}
-            await query.edit_message_text(tr(language, "ask_title"), parse_mode=ParseMode.HTML)
-            return
-        if data == "flow:skip":
-            await self._skip_flow_step(update, context, language)
-            return
-        if data == "file:done":
-            await self._finish_file_input(update, context, language)
-            return
-        if data.startswith("file:"):
-            quality = data.split(":", 1)[1]
-            flow = self._flow(context)
-            if not flow or flow.get("step") != "files" or quality not in QUALITY_OPTIONS:
-                return
-            flow["upload_quality"] = quality
-            flow["step"] = "file_upload"
-            await query.edit_message_text(tr(language, "send_file", quality=quality), parse_mode=ParseMode.HTML)
-            return
-        if data == "add:save":
-            await self._save_content(update, context, language)
-            return
-        if data == "series:addseason":
-            context.user_data["flow"] = {"mode": "add_season", "step": "select_series"}
-            await self._send_list(update, language, "series", "seasonseries")
-            return
-        if data == "series:addepisode":
-            context.user_data["flow"] = {"mode": "add_episode", "step": "select_series"}
-            await self._send_list(update, language, "series", "episodeseries")
-            return
-        if data == "adm:manage":
-            await query.edit_message_text(
-                tr(language, "manage"), parse_mode=ParseMode.HTML,
-                reply_markup=keyboard([
-                    [(tr(language, "movies"), "list:movie:view:0"), (tr(language, "series"), "list:series:view:0")],
-                    [(tr(language, "delete_season"), "series:delseason"), (tr(language, "delete_episode"), "series:delepisode")],
-                    [(tr(language, "back"), "adm:home")],
-                ]),
-            )
-            return
-        if data.startswith("list:"):
-            _, kind, action, page = data.split(":", 3)
-            await self._send_list(update, language, kind, action, int(page))
-            return
-        if data.startswith("pick:"):
-            _, action, content_id = data.split(":", 2)
-            await self._pick_content(update, context, language, action, content_id)
-            return
-        if data.startswith("view:"):
-            await self._admin_view_content(update, context, language, data.split(":", 1)[1])
-            return
-        if data.startswith("edit:"):
-            await self._edit_content_menu(update, context, language, data.split(":", 1)[1])
-            return
-        if data.startswith("editfield:"):
-            _, field, content_id = data.split(":", 2)
-            context.user_data["flow"] = {"mode": "edit_content", "step": field, "content_id": content_id}
-            await query.edit_message_text(tr(language, "ask_new_title" if field == "title" else "ask_new_description"), parse_mode=ParseMode.HTML)
-            return
-        if data.startswith("del:"):
-            content_id = data.split(":", 1)[1]
-            doc = await self.store.find_content(content_id)
-            if not doc:
-                await query.edit_message_text(tr(language, "content_not_found"), parse_mode=ParseMode.HTML)
-                return
-            await query.edit_message_text(tr(language, "delete_confirm", title=doc["title"]), parse_mode=ParseMode.HTML, reply_markup=keyboard([[(tr(language, "yes_delete"), f"delok:{content_id}")], [(tr(language, "cancel"), f"view:{content_id}")]]))
-            return
-        if data.startswith("delok:"):
-            await self.store.delete_content(data.split(":", 1)[1])
-            await query.edit_message_text(tr(language, "deleted"), parse_mode=ParseMode.HTML, reply_markup=keyboard([[(tr(language, "back"), "adm:manage")]]))
-            return
-        if data == "adm:links":
-            await query.edit_message_text(tr(language, "generate_link"), parse_mode=ParseMode.HTML, reply_markup=keyboard([[(tr(language, "movies"), "list:movie:link:0"), (tr(language, "series"), "list:series:link:0")], [(tr(language, "back"), "adm:home")]]))
-            return
-        if data == "adm:post":
-            await query.edit_message_text(tr(language, "post_generator"), parse_mode=ParseMode.HTML, reply_markup=keyboard([[(tr(language, "movies"), "list:movie:post:0"), (tr(language, "series"), "list:series:post:0")], [(tr(language, "back"), "adm:home")]]))
-            return
-        if data.startswith("posttype:"):
-            _, content_id, level = data.split(":", 2)
-            await self._post_type(update, context, language, content_id, level)
-            return
-        if data.startswith("postseason:"):
-            _, content_id, season_id = data.split(":", 2)
-            await self._create_post_draft(update, context, language, content_id, season_id=season_id)
-            return
-        if data.startswith("postepisode:"):
-            _, content_id, season_id = data.split(":", 2)
-            await self._post_episode_list(update, context, language, content_id, season_id)
-            return
-        if data.startswith("postep:"):
-            _, content_id, season_id, episode_id = data.split(":", 3)
-            await self._create_post_draft(update, context, language, content_id, season_id=season_id, episode_id=episode_id)
-            return
-        if data.startswith("post:"):
-            await self._post_callback(update, context, language, data)
-            return
-        if data == "adm:settings":
-            await self._settings_menu(update, language)
-            return
-        if data == "settings:language":
-            rows = [[(name, f"language:{code}")] for code, name in LANGUAGE_NAMES.items()]
-            rows.append([(tr(language, "back"), "adm:settings")])
-            await query.edit_message_text(tr(language, "select_language"), parse_mode=ParseMode.HTML, reply_markup=keyboard(rows))
-            return
-        if data.startswith("language:"):
-            code = data.split(":", 1)[1]
-            if code in PACKS and is_main_admin(self.settings, update):
-                await self.store.update_config({"language": code})
-                await query.edit_message_text(tr(code, "language_saved", language=LANGUAGE_NAMES[code]), parse_mode=ParseMode.HTML)
-            return
-        if data == "settings:delete":
-            context.user_data["flow"] = {"mode": "set_delete", "step": "seconds"}
-            await query.edit_message_text(tr(language, "ask_delete_seconds"), parse_mode=ParseMode.HTML)
-            return
-        if data == "settings:coadmins":
-            if not is_main_admin(self.settings, update):
-                await query.answer(tr(language, "not_admin"), show_alert=True)
-                return
-            config = await self.store.get_config()
-            listed = ", ".join(str(item) for item in config.get("co_admins", [])) or "—"
-            await query.edit_message_text(f"<b>{tr(language, 'coadmins')}</b>\n<code>{listed}</code>", parse_mode=ParseMode.HTML, reply_markup=keyboard([[(tr(language, "add_coadmin"), "coadmin:add"), (tr(language, "remove_coadmin"), "coadmin:remove")], [(tr(language, "back"), "adm:settings")]]))
-            return
-        if data.startswith("coadmin:"):
-            if not is_main_admin(self.settings, update):
-                return
-            action = data.split(":", 1)[1]
-            context.user_data["flow"] = {"mode": "coadmin", "step": action}
-            await query.edit_message_text(tr(language, "ask_coadmin"), parse_mode=ParseMode.HTML)
-            return
-        if data == "adm:stats":
-            movies, series, users = await asyncio.gather(
-                self.store.contents.count_documents({"content_type": "movie"}), self.store.contents.count_documents({"content_type": "series"}), self.store.users.count_documents({}),
-            )
-            await query.edit_message_text(f"<b>{tr(language, 'statistics')}</b>\n\n{tr(language, 'movies')}: <b>{movies}</b>\n{tr(language, 'series')}: <b>{series}</b>\nUsers: <b>{users}</b>", parse_mode=ParseMode.HTML, reply_markup=keyboard([[(tr(language, "back"), "adm:home")]]))
-            return
-        if data == "adm:broadcast":
-            if not is_main_admin(self.settings, update):
-                return
-            context.user_data["flow"] = {"mode": "broadcast", "step": "message"}
-            await query.edit_message_text(tr(language, "broadcast_prompt"), parse_mode=ParseMode.HTML)
-            return
-        if data == "broadcast:yes":
-            await self._broadcast(update, context, language)
-            return
-        if data == "series:delseason":
-            context.user_data["flow"] = {"mode": "delete_season", "step": "select_series"}
-            await self._send_list(update, language, "series", "delseasonseries")
-            return
-        if data == "series:delepisode":
-            context.user_data["flow"] = {"mode": "delete_episode", "step": "select_series"}
-            await self._send_list(update, language, "series", "delepisodeseries")
-            return
-        if data.startswith("delseason:"):
-            _, content_id, season_id = data.split(":", 2)
-            await self.store.delete_season(content_id, season_id)
-            await query.edit_message_text(tr(language, "deleted"), parse_mode=ParseMode.HTML, reply_markup=keyboard([[(tr(language, "back"), "adm:manage")]]))
-            return
-        if data.startswith("delepisode:"):
-            _, content_id, season_id, episode_id = data.split(":", 3)
-            await self.store.delete_episode(content_id, season_id, episode_id)
-            await query.edit_message_text(tr(language, "deleted"), parse_mode=ParseMode.HTML, reply_markup=keyboard([[(tr(language, "back"), "adm:manage")]]))
-
-    async def _pick_content(self, update: Update, context: ContextTypes.DEFAULT_TYPE, language: str, action: str, content_id: str) -> None:
-        query = update.callback_query
-        assert query
-        doc = await self.store.find_content(content_id)
-        if not doc:
-            await query.edit_message_text(tr(language, "content_not_found"), parse_mode=ParseMode.HTML)
-            return
-        flow = self._flow(context)
-        if action == "view":
-            await self._admin_view_content(update, context, language, content_id)
-            return
-        if action == "link":
-            username = (await context.bot.get_me()).username
-            link = deep_link(username, content_id)
-            await query.edit_message_text(f"<b>{h(doc['title'])}</b>\n\n<code>{link}</code>", parse_mode=ParseMode.HTML, reply_markup=keyboard([[(tr(language, "back"), "adm:links")]]))
-            return
-        if action == "post":
-            if doc["content_type"] == "movie":
-                await self._create_post_draft(update, context, language, content_id)
+            if query.message.photo:
+                await query.message.delete()
+                await context.bot.send_message(query.from_user.id, admin_text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
             else:
-                await query.edit_message_text(
-                    f"<b>{h(doc['title'])}</b>", parse_mode=ParseMode.HTML,
-                    reply_markup=keyboard([
-                        [(tr(language, "whole_series"), f"posttype:{content_id}:series")],
-                        [(tr(language, "season_post"), f"posttype:{content_id}:season")],
-                        [(tr(language, "episode_post"), f"posttype:{content_id}:episode")],
-                        [(tr(language, "back"), "adm:post")],
-                    ]),
-                )
-            return
-        if action == "seasonseries" and flow:
-            flow.update({"content_id": content_id, "step": "title", "draft": {"sid": compact_id(), "episodes": []}})
-            await query.edit_message_text(tr(language, "ask_season_title"), parse_mode=ParseMode.HTML)
-            return
-        if action == "episodeseries" and flow:
-            flow.update({"content_id": content_id, "step": "select_season"})
-            await self._show_season_picker(update, language, doc, "epseason")
-            return
-        if action == "delseasonseries" and flow:
-            flow.update({"content_id": content_id, "step": "select_season"})
-            await self._show_season_picker(update, language, doc, "delseasonpick")
-            return
-        if action == "delepisodeseries" and flow:
-            flow.update({"content_id": content_id, "step": "select_season"})
-            await self._show_season_picker(update, language, doc, "delepisodepick")
-            return
+                await query.edit_message_text(admin_text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+        except BadRequest:
+            await query.answer()
+    else:
+        await update.message.reply_text(admin_text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+    
+    context.user_data.clear()
+    return ConversationHandler.END
 
-    async def _admin_view_content(self, update: Update, context: ContextTypes.DEFAULT_TYPE, language: str, content_id: str) -> None:
-        query = update.callback_query
-        assert query
-        doc = await self.store.find_content(content_id)
-        if not doc:
-            await query.edit_message_text(tr(language, "content_not_found"), parse_mode=ParseMode.HTML)
-            return
-        kind = tr(language, "movies" if doc["content_type"] == "movie" else "series")
-        if doc["content_type"] == "movie":
-            detail = f"Files: {len(doc.get('files', {}))}"
-        else:
-            episodes = sum(len(season.get("episodes", [])) for season in doc.get("seasons", []))
-            detail = f"Seasons: {len(doc.get('seasons', []))} | Episodes: {episodes}"
-        caption = f"<b>{h(doc['title'])}</b>\n{kind}\n{detail}\n\n{quote(doc.get('description', ''))}"
-        rows = [[(tr(language, "edit"), f"edit:{content_id}"), (tr(language, "delete"), f"del:{content_id}")]]
-        if doc["content_type"] == "series":
-            rows.append([(tr(language, "add_season"), f"viewaddseason:{content_id}"), (tr(language, "add_episode"), f"viewaddepisode:{content_id}")])
-        rows.append([(tr(language, "back"), f"list:{doc['content_type']}:view:0")])
-        await query.edit_message_text(caption[:4000], parse_mode=ParseMode.HTML, reply_markup=keyboard(rows))
+# ============================================
+# ===       ADD CONTENT MENU (SPLIT)       ===
+# ============================================
+async def menu_add_content(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    keyboard = [
+        [InlineKeyboardButton("🎬 Add Movie", callback_data="start_add_movie")],
+        [InlineKeyboardButton("📺 Add Web Series", callback_data="start_add_series")],
+        [InlineKeyboardButton("📺 Add Season/Ep to Series", callback_data="start_append_series")],
+        [InlineKeyboardButton("⬅️ Back to Admin Menu", callback_data="admin_menu")]
+    ]
+    await query.edit_message_text("➕ <b>Add Content</b>\n\nAap kya add karna chahte hain?", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
 
-    async def _edit_content_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE, language: str, content_id: str) -> None:
-        query = update.callback_query
-        assert query
-        doc = await self.store.find_content(content_id)
-        if not doc:
-            await query.edit_message_text(tr(language, "content_not_found"), parse_mode=ParseMode.HTML)
-            return
-        await query.edit_message_text(
-            f"<b>{h(doc['title'])}</b>", parse_mode=ParseMode.HTML,
-            reply_markup=keyboard([
-                [(tr(language, "edit_title"), f"editfield:title:{content_id}"), (tr(language, "edit_description"), f"editfield:description:{content_id}")],
-                [(tr(language, "back"), f"view:{content_id}")],
-            ]),
-        )
+# ============================================
+# ===       ADD MOVIE FLOW                 ===
+# ============================================
+async def start_add_movie(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    context.user_data.clear()
+    context.user_data['content_type'] = 'movie'
+    context.user_data['files'] = {}
+    await query.edit_message_text("🎬 <b>Send Movie Title:</b>\n\n/cancel - To stop.", parse_mode=ParseMode.HTML)
+    return M_GET_TITLE
 
-    async def _file_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE, language: str, *, edit: bool = False) -> None:
-        flow = self._flow(context)
-        if not flow:
-            return
-        files = flow.get("draft", {}).get("files", {})
-        rows: list[list[tuple[str, str]]] = []
-        for quality in QUALITY_OPTIONS:
-            marker = " ✅" if quality in files else ""
-            rows.append([(f"{quality}{marker}", f"file:{quality}")])
-        rows.append([(tr(language, "done"), "file:done")])
-        text = tr(language, "choose_quality")
-        if edit and update.callback_query:
-            await update.callback_query.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=keyboard(rows))
-        else:
-            await reply(update, text, reply_markup=keyboard(rows))
+async def get_movie_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['title'] = update.message.text
+    await update.message.reply_text("🖼️ <b>Send Poster Photo (or /skip):</b>\n\n/cancel - To stop.", parse_mode=ParseMode.HTML)
+    return M_GET_POSTER
 
-    async def _skip_flow_step(self, update: Update, context: ContextTypes.DEFAULT_TYPE, language: str) -> None:
-        query = update.callback_query
-        assert query
-        flow = self._flow(context)
-        if not flow:
-            return
-        draft = flow.setdefault("draft", {})
-        step = flow.get("step")
-        if step == "poster":
-            draft["poster_file_id"] = None
-            flow["step"] = "description"
-            await query.edit_message_text(tr(language, "ask_description"), parse_mode=ParseMode.HTML, reply_markup=keyboard([[(tr(language, "skip"), "flow:skip")]]))
-        elif step == "description":
-            draft["description"] = ""
-            if flow["mode"] == "add_content" and draft["content_type"] == "movie":
-                flow["step"] = "files"
-                await self._file_menu(update, context, language, edit=True)
-            else:
-                await self._show_save_confirmation(update, context, language)
-        elif step == "episode_description":
-            draft["description"] = ""
-            flow["step"] = "files"
-            await self._file_menu(update, context, language, edit=True)
-        else:
-            await query.answer(tr(language, "invalid_input"), show_alert=True)
+async def get_movie_poster(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.photo:
+        context.user_data['poster_id'] = update.message.photo[-1].file_id
+    elif update.message.text != '/skip':
+        await update.message.reply_text("Please send a valid photo or /skip.")
+        return M_GET_POSTER
+    await update.message.reply_text("📝 <b>Send Description/Synopsis (or /skip):</b>\n\n/cancel - To stop.", parse_mode=ParseMode.HTML)
+    return M_GET_DESC
 
-    async def _finish_file_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE, language: str) -> None:
-        query = update.callback_query
-        assert query
-        flow = self._flow(context)
-        if not flow:
-            return
-        files = flow.get("draft", {}).get("files", {})
-        if not files:
-            await query.answer(tr(language, "need_file"), show_alert=True)
-            return
-        await self._show_save_confirmation(update, context, language)
+async def get_movie_desc(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.text != '/skip':
+        context.user_data['description'] = update.message.text
+    else:
+        context.user_data['description'] = ""
+    await show_quality_menu(update.message, context, is_series=False)
+    return M_GET_QUAL
 
-    async def _show_save_confirmation(self, update: Update, context: ContextTypes.DEFAULT_TYPE, language: str) -> None:
-        query = update.callback_query
-        assert query
-        flow = self._flow(context)
-        if not flow:
-            return
-        draft = flow.get("draft", {})
-        mode = flow.get("mode")
-        if mode == "add_content":
-            kind = draft["content_type"]
-            count = len(draft.get("files", {})) if kind == "movie" else 0
-        elif mode == "add_season":
-            kind, count = "season", 0
-        else:
-            kind, count = "episode", len(draft.get("files", {}))
-        title = draft.get("title", "")
-        await query.edit_message_text(
-            tr(language, "confirm_content", title=title, kind=kind, files=count), parse_mode=ParseMode.HTML,
-            reply_markup=keyboard([[(tr(language, "save"), "add:save")], [(tr(language, "cancel"), "adm:home")]]),
-        )
+async def show_quality_menu(message, context, is_series=False):
+    files = context.user_data.get('files', {})
+    cb_prefix = "squal_" if is_series else "mqual_"
+    keyboard = [[InlineKeyboardButton(f"{q} {'✅' if q in files else ''}", callback_data=f"{cb_prefix}{q}")] for q in QUALITY_OPTIONS]
+    
+    save_cb = "save_series_ep" if is_series else "save_movie"
+    keyboard.append([InlineKeyboardButton("💾 Save Content", callback_data=save_cb)])
+    
+    item_name = context.user_data.get('curr_ep_title', context.user_data.get('title', 'Content'))
+    await message.reply_text(f"🎥 <b>Select Quality to Upload for: {item_name}</b>", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
 
-    async def _save_content(self, update: Update, context: ContextTypes.DEFAULT_TYPE, language: str) -> None:
-        query = update.callback_query
-        assert query
-        flow = self._flow(context)
-        if not flow:
-            return
-        draft = flow.get("draft", {})
-        mode = flow.get("mode")
-        try:
-            if mode == "add_content":
-                await self.store.add_content(draft)
-            elif mode == "add_season":
-                season = {"sid": draft["sid"], "title": draft["title"], "description": draft.get("description", ""), "poster_file_id": draft.get("poster_file_id"), "episodes": []}
-                if not await self.store.add_season(flow["content_id"], season):
-                    raise RuntimeError("series update failed")
-            elif mode == "add_episode":
-                episode = {"eid": draft["eid"], "title": draft["title"], "description": draft.get("description", ""), "files": draft.get("files", {})}
-                if not await self.store.add_episode(flow["content_id"], flow["season_id"], episode):
-                    raise RuntimeError("season update failed")
-            else:
-                return
-        except DuplicateKeyError:
-            kind = draft.get("content_type", "content")
-            await query.answer(tr(language, "already_exists", kind=kind), show_alert=True)
-            return
-        except Exception:
-            LOG.exception("Could not save content")
-            await query.answer(tr(language, "invalid_input"), show_alert=True)
-            return
-        self._clear_flow(context)
-        await query.edit_message_text(tr(language, "saved"), parse_mode=ParseMode.HTML, reply_markup=keyboard([[(tr(language, "add_content"), "adm:add"), (tr(language, "admin"), "adm:home")]]))
-
-    async def _show_season_picker(self, update: Update, language: str, doc: dict[str, Any], prefix: str) -> None:
-        query = update.callback_query
-        assert query
-        seasons = doc.get("seasons", [])
-        if not seasons:
-            await query.edit_message_text(tr(language, "no_items"), parse_mode=ParseMode.HTML, reply_markup=keyboard([[(tr(language, "back"), "adm:add")]]))
-            return
-        rows = [[(season["title"][:50], f"{prefix}:{doc['_id']}:{season['sid']}")] for season in seasons]
-        rows.append([(tr(language, "back"), "adm:home")])
-        await query.edit_message_text(tr(language, "choose_season"), parse_mode=ParseMode.HTML, reply_markup=keyboard(rows))
-
-    @staticmethod
-    def _season(doc: dict[str, Any] | None, season_id: str) -> dict[str, Any] | None:
-        if not doc:
-            return None
-        return next((item for item in doc.get("seasons", []) if item.get("sid") == season_id), None)
-
-    @staticmethod
-    def _episode(season: dict[str, Any] | None, episode_id: str) -> dict[str, Any] | None:
-        if not season:
-            return None
-        return next((item for item in season.get("episodes", []) if item.get("eid") == episode_id), None)
-
-    async def message(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        await self.store.touch_user(update)
-        # Ordinary user messages have no bot flow; ignore them rather than
-        # replying "not admin" to every chat message.
-        flow = self._flow(context)
-        if not flow:
-            return
-        allowed = await self._admin_or_notice(update)
-        if not allowed:
-            return
-        _, language = allowed
-        if not update.effective_message:
-            return
-        message = update.effective_message
-        text = message.text or ""
-        if text == "/skip":
-            await self._skip_message_step(update, context, language)
-            return
-        mode, step = flow.get("mode"), flow.get("step")
-        try:
-            if mode == "add_content":
-                await self._message_add_content(update, context, language, flow)
-            elif mode == "add_season":
-                await self._message_add_season(update, context, language, flow)
-            elif mode == "add_episode":
-                await self._message_add_episode(update, context, language, flow)
-            elif mode == "edit_content":
-                await self._message_edit_content(update, context, language, flow)
-            elif mode == "post":
-                await self._message_post(update, context, language, flow)
-            elif mode == "set_delete" and step == "seconds":
-                await self._message_delete_seconds(update, context, language, text)
-            elif mode == "coadmin":
-                await self._message_coadmin(update, context, language, flow, text)
-            elif mode == "broadcast" and step == "message":
-                await self._message_broadcast_confirm(update, context, language)
-            else:
-                await reply(update, tr(language, "invalid_input"))
-        except Exception:
-            LOG.exception("Unhandled admin message in %s/%s", mode, step)
-            await reply(update, tr(language, "invalid_input"))
-
-    async def _message_add_content(self, update: Update, context: ContextTypes.DEFAULT_TYPE, language: str, flow: dict[str, Any]) -> None:
-        message = update.effective_message
-        assert message
-        draft = flow["draft"]
-        if flow["step"] == "title":
-            title = clean_text(message.text or "", limit=160)
-            if not title:
-                await reply(update, tr(language, "ask_title"))
-                return
-            draft["title"] = title
-            flow["step"] = "poster"
-            await reply(update, tr(language, "ask_poster"), reply_markup=keyboard([[(tr(language, "skip"), "flow:skip")]]))
-            return
-        if flow["step"] == "poster":
-            if not message.photo:
-                await reply(update, tr(language, "ask_poster"), reply_markup=keyboard([[(tr(language, "skip"), "flow:skip")]]))
-                return
-            draft["poster_file_id"] = message.photo[-1].file_id
-            flow["step"] = "description"
-            await reply(update, tr(language, "ask_description"), reply_markup=keyboard([[(tr(language, "skip"), "flow:skip")]]))
-            return
-        if flow["step"] == "description":
-            draft["description"] = (message.text or "").strip()[:3000]
-            if draft["content_type"] == "movie":
-                flow["step"] = "files"
-                await self._file_menu(update, context, language)
-            else:
-                await reply(update, tr(language, "confirm_content", title=draft["title"], kind="series", files=0), reply_markup=keyboard([[(tr(language, "save"), "add:save")], [(tr(language, "cancel"), "adm:home")]]))
-            return
-        if flow["step"] == "file_upload":
-            reference = self._media_reference(message)
-            if not reference:
-                await reply(update, tr(language, "send_file", quality=flow["upload_quality"]))
-                return
-            draft["files"][flow["upload_quality"]] = reference
-            flow["step"] = "files"
-            await reply(update, tr(language, "file_saved", quality=flow["upload_quality"]))
-            await self._file_menu(update, context, language)
-
-    async def _message_add_season(self, update: Update, context: ContextTypes.DEFAULT_TYPE, language: str, flow: dict[str, Any]) -> None:
-        message = update.effective_message
-        assert message
-        draft = flow["draft"]
-        if flow["step"] == "title":
-            title = clean_text(message.text or "", limit=160)
-            if not title:
-                await reply(update, tr(language, "ask_season_title"))
-                return
-            draft["title"] = title
-            flow["step"] = "poster"
-            await reply(update, tr(language, "ask_poster"), reply_markup=keyboard([[(tr(language, "skip"), "flow:skip")]]))
-            return
-        if flow["step"] == "poster":
-            if not message.photo:
-                await reply(update, tr(language, "ask_poster"), reply_markup=keyboard([[(tr(language, "skip"), "flow:skip")]]))
-                return
-            draft["poster_file_id"] = message.photo[-1].file_id
-            flow["step"] = "description"
-            await reply(update, tr(language, "ask_description"), reply_markup=keyboard([[(tr(language, "skip"), "flow:skip")]]))
-            return
-        if flow["step"] == "description":
-            draft["description"] = (message.text or "").strip()[:3000]
-            await reply(update, tr(language, "confirm_content", title=draft["title"], kind="season", files=0), reply_markup=keyboard([[(tr(language, "save"), "add:save")], [(tr(language, "cancel"), "adm:home")]]))
-
-    async def _message_add_episode(self, update: Update, context: ContextTypes.DEFAULT_TYPE, language: str, flow: dict[str, Any]) -> None:
-        message = update.effective_message
-        assert message
-        draft = flow["draft"]
-        if flow["step"] == "title":
-            title = clean_text(message.text or "", limit=160)
-            if not title:
-                await reply(update, tr(language, "ask_episode_title"))
-                return
-            draft["title"] = title
-            flow["step"] = "episode_description"
-            await reply(update, tr(language, "ask_description"), reply_markup=keyboard([[(tr(language, "skip"), "flow:skip")]]))
-            return
-        if flow["step"] == "episode_description":
-            draft["description"] = (message.text or "").strip()[:3000]
-            flow["step"] = "files"
-            await self._file_menu(update, context, language)
-            return
-        if flow["step"] == "file_upload":
-            reference = self._media_reference(message)
-            if not reference:
-                await reply(update, tr(language, "send_file", quality=flow["upload_quality"]))
-                return
-            draft["files"][flow["upload_quality"]] = reference
-            flow["step"] = "files"
-            await reply(update, tr(language, "file_saved", quality=flow["upload_quality"]))
-            await self._file_menu(update, context, language)
-
-    @staticmethod
-    def _media_reference(message: Any) -> dict[str, Any] | None:
-        if message.video:
-            media = message.video
-            return {"kind": "video", "file_id": media.file_id, "file_name": media.file_name or "video", "file_size": media.file_size or 0}
-        if message.document:
-            media = message.document
-            return {"kind": "document", "file_id": media.file_id, "file_name": media.file_name or "file", "file_size": media.file_size or 0}
-        return None
-
-    async def _skip_message_step(self, update: Update, context: ContextTypes.DEFAULT_TYPE, language: str) -> None:
-        flow = self._flow(context)
-        if not flow:
-            return
-        draft = flow.get("draft", {})
-        step = flow.get("step")
-        if step == "poster":
-            draft["poster_file_id"] = None
-            flow["step"] = "description"
-            await reply(update, tr(language, "ask_description"), reply_markup=keyboard([[(tr(language, "skip"), "flow:skip")]]))
-        elif step in {"description", "episode_description"} and flow["mode"] != "post":
-            draft["description"] = ""
-            if flow["mode"] == "add_content" and draft.get("content_type") == "series" or flow["mode"] == "add_season":
-                # Text message has no callback to edit; reuse the normal confirmation sender.
-                await reply(update, tr(language, "confirm_content", title=draft.get("title", ""), kind="series" if flow["mode"] == "add_content" else "season", files=0), reply_markup=keyboard([[(tr(language, "save"), "add:save")], [(tr(language, "cancel"), "adm:home")]]))
-            else:
-                flow["step"] = "files"
-                await self._file_menu(update, context, language)
-        elif flow["mode"] == "post" and step == "description":
-            # /skip here means retain the database description in the temporary draft.
-            self._clear_flow(context)
-            await self._post_menu(update, context, language)
-        elif flow["mode"] == "edit_content" and step == "description":
-            await self._save_edit(context, language, update, flow, "")
-        else:
-            await reply(update, tr(language, "invalid_input"))
-
-    async def _message_edit_content(self, update: Update, context: ContextTypes.DEFAULT_TYPE, language: str, flow: dict[str, Any]) -> None:
-        value = clean_text(update.effective_message.text or "", limit=160) if flow["step"] == "title" else (update.effective_message.text or "").strip()[:3000]
-        if flow["step"] == "title" and not value:
-            await reply(update, tr(language, "ask_new_title"))
-            return
-        await self._save_edit(context, language, update, flow, value)
-
-    async def _save_edit(self, context: ContextTypes.DEFAULT_TYPE, language: str, update: Update, flow: dict[str, Any], value: str) -> None:
-        field = flow["step"]
-        changes: dict[str, Any] = {field: value}
-        if field == "title":
-            changes["title_key"] = normalized_title(value)
-        try:
-            changed = await self.store.update_content(flow["content_id"], changes)
-        except DuplicateKeyError:
-            await reply(update, tr(language, "already_exists", kind="content"))
-            return
-        self._clear_flow(context)
-        await reply(update, tr(language, "updated") if changed else tr(language, "content_not_found"))
-
-    async def _settings_menu(self, update: Update, language: str) -> None:
-        query = update.callback_query
-        assert query
-        rows = [[(tr(language, "language"), "settings:language"), (tr(language, "autodelete"), "settings:delete")]]
-        if is_main_admin(self.settings, update):
-            rows.append([(tr(language, "coadmins"), "settings:coadmins")])
-        rows.append([(tr(language, "back"), "adm:home")])
-        await query.edit_message_text(f"<b>{tr(language, 'settings')}</b>", parse_mode=ParseMode.HTML, reply_markup=keyboard(rows))
-
-    async def _message_delete_seconds(self, update: Update, context: ContextTypes.DEFAULT_TYPE, language: str, text: str) -> None:
-        try:
-            seconds = int(text.strip())
-            if not 0 <= seconds <= 604800:
-                raise ValueError
-        except ValueError:
-            await reply(update, tr(language, "ask_delete_seconds"))
-            return
-        await self.store.update_config({"auto_delete_seconds": seconds})
-        self._clear_flow(context)
-        await reply(update, tr(language, "delete_seconds_saved", seconds=seconds))
-
-    async def _message_coadmin(self, update: Update, context: ContextTypes.DEFAULT_TYPE, language: str, flow: dict[str, Any], text: str) -> None:
-        try:
-            user_id = int(text.strip())
-            if user_id <= 0:
-                raise ValueError
-        except ValueError:
-            await reply(update, tr(language, "ask_coadmin"))
-            return
-        config = await self.store.get_config(fresh=True)
-        current = set(config.get("co_admins", []))
-        if flow["step"] == "add" and user_id not in self.settings.admin_ids:
-            current.add(user_id)
-        elif flow["step"] == "remove":
-            current.discard(user_id)
-        await self.store.update_config({"co_admins": sorted(current)})
-        self._clear_flow(context)
-        await reply(update, tr(language, "coadmin_saved"))
-
-    async def _message_broadcast_confirm(self, update: Update, context: ContextTypes.DEFAULT_TYPE, language: str) -> None:
-        message = update.effective_message
-        assert message
-        count = await self.store.users.count_documents({})
-        context.user_data["broadcast_source"] = {"chat_id": message.chat_id, "message_id": message.message_id}
-        context.user_data["flow"] = {"mode": "broadcast", "step": "confirm"}
-        await reply(update, tr(language, "broadcast_confirm", count=count), reply_markup=keyboard([[(tr(language, "publish"), "broadcast:yes")], [(tr(language, "cancel"), "adm:home")]]))
-
-    async def _broadcast(self, update: Update, context: ContextTypes.DEFAULT_TYPE, language: str) -> None:
-        query = update.callback_query
-        assert query
-        source = context.user_data.get("broadcast_source")
-        if not source:
-            await query.answer(tr(language, "invalid_input"), show_alert=True)
-            return
-        sent = failed = 0
-        cursor = self.store.users.find({}, {"_id": 1})
-        async for user in cursor:
-            try:
-                await context.bot.copy_message(chat_id=user["_id"], from_chat_id=source["chat_id"], message_id=source["message_id"])
-                sent += 1
-            except RetryAfter as exc:
-                await asyncio.sleep(float(exc.retry_after) + 0.5)
-                try:
-                    await context.bot.copy_message(chat_id=user["_id"], from_chat_id=source["chat_id"], message_id=source["message_id"])
-                    sent += 1
-                except TelegramError:
-                    failed += 1
-            except (Forbidden, BadRequest, TelegramError):
-                failed += 1
-        self._clear_flow(context)
-        context.user_data.pop("broadcast_source", None)
-        await query.edit_message_text(tr(language, "broadcast_sent", sent=sent, failed=failed), parse_mode=ParseMode.HTML, reply_markup=keyboard([[(tr(language, "admin"), "adm:home")]]))
-
-    async def _post_type(self, update: Update, context: ContextTypes.DEFAULT_TYPE, language: str, content_id: str, level: str) -> None:
-        doc = await self.store.find_content(content_id)
-        query = update.callback_query
-        assert query
-        if not doc:
-            await query.edit_message_text(tr(language, "content_not_found"), parse_mode=ParseMode.HTML)
-            return
-        if level == "series":
-            await self._create_post_draft(update, context, language, content_id)
-        elif level == "season":
-            await self._show_season_picker(update, language, doc, "postseason")
-        elif level == "episode":
-            await self._show_season_picker(update, language, doc, "postepisode")
-
-    async def _post_episode_list(self, update: Update, context: ContextTypes.DEFAULT_TYPE, language: str, content_id: str, season_id: str) -> None:
-        query = update.callback_query
-        assert query
-        doc = await self.store.find_content(content_id)
-        season = self._season(doc, season_id)
-        if not season or not season.get("episodes"):
-            await query.edit_message_text(tr(language, "no_items"), parse_mode=ParseMode.HTML)
-            return
-        rows = [[(episode["title"][:50], f"postep:{content_id}:{season_id}:{episode['eid']}")] for episode in season["episodes"]]
-        rows.append([(tr(language, "back"), "adm:post")])
-        await query.edit_message_text(tr(language, "choose_item", page=1), parse_mode=ParseMode.HTML, reply_markup=keyboard(rows))
-
-    async def _create_post_draft(self, update: Update, context: ContextTypes.DEFAULT_TYPE, language: str, content_id: str, season_id: str | None = None, episode_id: str | None = None) -> None:
-        query = update.callback_query
-        assert query
-        doc = await self.store.find_content(content_id)
-        if not doc:
-            await query.edit_message_text(tr(language, "content_not_found"), parse_mode=ParseMode.HTML)
-            return
-        title, description = doc["title"], doc.get("description", "")
-        poster = doc.get("poster_file_id")
-        if season_id:
-            season = self._season(doc, season_id)
-            if not season:
-                await query.edit_message_text(tr(language, "content_not_found"), parse_mode=ParseMode.HTML)
-                return
-            title = f"{doc['title']} — {season['title']}"
-            description = season.get("description") or description
-            poster = season.get("poster_file_id") or poster
-        if episode_id:
-            episode = self._episode(self._season(doc, season_id or ""), episode_id)
-            if not episode:
-                await query.edit_message_text(tr(language, "content_not_found"), parse_mode=ParseMode.HTML)
-                return
-            title = f"{title} — {episode['title']}"
-            description = episode.get("description") or description
-        bot_username = (await context.bot.get_me()).username
-        original_link = deep_link(bot_username, content_id, season_id, episode_id)
-        # This is deliberately session-only.  No title/description below is persisted.
-        context.user_data["post_draft"] = {
-            "content_id": content_id,
-            "season_id": season_id,
-            "episode_id": episode_id,
-            "title": title,
-            "description": description,
-            "poster_file_id": poster,
-            "original_link": original_link,
-            "short_link": "",
-            "destination": "",
+async def movie_quality_select(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    if query.data == "save_movie":
+        if not context.user_data.get('files'):
+            await query.answer("Upload at least 1 file!", show_alert=True)
+            return M_GET_QUAL
+        
+        # Save to DB
+        doc = {
+            "title": context.user_data['title'],
+            "title_key": normalized_title(context.user_data['title']),
+            "content_type": "movie",
+            "description": context.user_data.get('description', ''),
+            "poster_id": context.user_data.get('poster_id'),
+            "files": context.user_data['files'],
+            "updated_at": datetime.now()
         }
-        context.user_data["flow"] = {"mode": "post", "step": "short_link"}
-        await query.edit_message_text(tr(language, "original_link", link=original_link), parse_mode=ParseMode.HTML)
-
-    async def _post_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE, language: str, data: str) -> None:
-        query = update.callback_query
-        assert query
-        draft = context.user_data.get("post_draft")
-        if not isinstance(draft, dict):
-            await query.answer(tr(language, "invalid_input"), show_alert=True)
-            return
-        if data == "post:edittitle":
-            context.user_data["flow"] = {"mode": "post", "step": "title"}
-            await query.edit_message_text(tr(language, "ask_post_title"), parse_mode=ParseMode.HTML)
-            return
-        if data == "post:editdescription":
-            context.user_data["flow"] = {"mode": "post", "step": "description"}
-            await query.edit_message_text(tr(language, "ask_post_description"), parse_mode=ParseMode.HTML)
-            return
-        if data == "post:destination":
-            context.user_data["flow"] = {"mode": "post", "step": "destination"}
-            await query.edit_message_text(tr(language, "ask_destination"), parse_mode=ParseMode.HTML)
-            return
-        if data == "post:preview":
-            await self._deliver_draft(context, draft, update.effective_chat.id, preview=True)
-            await query.answer(tr(language, "preview"))
-            return
-        if data == "post:publish":
-            if not draft.get("destination"):
-                await query.answer(tr(language, "destination_missing"), show_alert=True)
-                return
-            try:
-                await self._deliver_draft(context, draft, draft["destination"], preview=False)
-                # Audit contains ids/destination only: it never stores temporary edited text.
-                await self.store.post_log.insert_one({"content_id": draft["content_id"], "destination": draft["destination"], "created_at": now()})
-                destination = draft["destination"]
-                self._clear_flow(context)
-                context.user_data.pop("post_draft", None)
-                await query.edit_message_text(tr(language, "published", chat_id=destination), parse_mode=ParseMode.HTML, reply_markup=keyboard([[(tr(language, "admin"), "adm:home")]]))
-            except TelegramError:
-                LOG.exception("Post publish failed")
-                await query.answer(tr(language, "post_failed"), show_alert=True)
-            return
-        if data == "post:cancel":
-            self._clear_flow(context)
-            context.user_data.pop("post_draft", None)
-            await self._send_admin_home(update, language)
-
-    async def _post_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE, language: str) -> None:
-        draft = context.user_data.get("post_draft")
-        if not isinstance(draft, dict):
-            return
-        destination = draft.get("destination") or "—"
-        text = f"{tr(language, 'post_edit_menu')}\n\n<b>{h(draft['title'])}</b>\nDestination: <code>{h(destination)}</code>"
-        markup = keyboard([
-            [(tr(language, "edit_title"), "post:edittitle"), (tr(language, "edit_description"), "post:editdescription")],
-            [(tr(language, "set_destination"), "post:destination")],
-            [(tr(language, "preview"), "post:preview"), (tr(language, "publish"), "post:publish")],
-            [(tr(language, "cancel"), "post:cancel")],
-        ])
-        await reply(update, text, reply_markup=markup)
-
-    async def _message_post(self, update: Update, context: ContextTypes.DEFAULT_TYPE, language: str, flow: dict[str, Any]) -> None:
-        draft = context.user_data.get("post_draft")
-        if not isinstance(draft, dict):
-            self._clear_flow(context)
-            return
-        value = (update.effective_message.text or "").strip()
-        step = flow["step"]
-        if step == "short_link":
-            if not valid_url(value):
-                await reply(update, tr(language, "bad_link"))
-                return
-            draft["short_link"] = value
-            # Required post-only edit stage: this does not write the content document.
-            flow["step"] = "description"
-            await reply(update, tr(language, "ask_post_description") + "\n\n/skip = keep original description")
-            return
-        elif step == "title":
-            value = clean_text(value, limit=160)
-            if not value:
-                await reply(update, tr(language, "ask_post_title"))
-                return
-            draft["title"] = value
-        elif step == "description":
-            draft["description"] = value[:3000]
-        elif step == "destination":
-            if not (value.startswith("@") or re.fullmatch(r"-?\d{5,20}", value)):
-                await reply(update, tr(language, "ask_destination"))
-                return
-            draft["destination"] = value
-        else:
-            return
-        self._clear_flow(context)
-        await self._post_menu(update, context, language)
-
-    async def _deliver_draft(self, context: ContextTypes.DEFAULT_TYPE, draft: dict[str, Any], chat_id: int | str, *, preview: bool) -> None:
-        config = await self.store.get_config()
-        rows: list[list[tuple[str, str]]] = [(tr(language_of(config), "download"), draft["short_link"])]
-        support_url = config.get("support_url", "")
-        if valid_url(support_url):
-            rows.append((tr(language_of(config), "support"), support_url))
-        markup = url_keyboard([rows])
-        caption = post_caption(draft["title"], draft.get("description", ""))
-        long_caption = len(caption) > TELEGRAM_CAPTION_LIMIT
-        compact_caption = f"<b>{h(draft['title'])}</b>" if long_caption else caption
-        if draft.get("poster_file_id"):
-            sent = await context.bot.send_photo(chat_id=chat_id, photo=draft["poster_file_id"], caption=compact_caption, parse_mode=ParseMode.HTML, reply_markup=markup)
-        else:
-            sent = await context.bot.send_message(chat_id=chat_id, text=compact_caption, parse_mode=ParseMode.HTML, reply_markup=markup)
-        if long_caption and draft.get("description"):
-            # The full description remains an expandable quote, linked to the poster.
-            await context.bot.send_message(chat_id=chat_id, text=quote(draft["description"]), parse_mode=ParseMode.HTML, reply_to_message_id=sent.message_id)
-
-    async def _show_deep_content(self, update: Update, context: ContextTypes.DEFAULT_TYPE, content_id: str, season_id: str | None, episode_id: str | None) -> None:
-        _, language = await self._config_language()
-        doc = await self.store.find_content(content_id)
-        if not doc:
-            await reply(update, tr(language, "content_not_found"))
-            return
-        if doc["content_type"] == "movie":
-            await self._send_user_card(update, language, doc, callback=f"open:{content_id}:m")
-            return
-        if not season_id:
-            seasons = doc.get("seasons", [])
-            if not seasons:
-                await reply(update, tr(language, "no_items"))
-                return
-            rows = [[(season["title"][:50], f"open:{content_id}:{season['sid']}")] for season in seasons]
-            await reply(update, f"<b>{h(doc['title'])}</b>\n\n{quote(doc.get('description', ''))}", reply_markup=keyboard(rows))
-            return
-        season = self._season(doc, season_id)
-        if not season:
-            await reply(update, tr(language, "content_not_found"))
-            return
-        if not episode_id:
-            episodes = season.get("episodes", [])
-            if not episodes:
-                await reply(update, tr(language, "no_items"))
-                return
-            rows = [[(episode["title"][:50], f"open:{content_id}:{season_id}:{episode['eid']}")] for episode in episodes]
-            await reply(update, f"<b>{h(doc['title'])} — {h(season['title'])}</b>", reply_markup=keyboard(rows))
-            return
-        episode = self._episode(season, episode_id)
-        if not episode:
-            await reply(update, tr(language, "content_not_found"))
-            return
-        title = f"{doc['title']} — {season['title']} — {episode['title']}"
-        rows = [[(quality, f"quality:{content_id}:{season_id}:{episode_id}:{quality}")] for quality in episode.get("files", {})]
-        await reply(update, tr(language, "select_quality", title=title), reply_markup=keyboard(rows))
-
-    async def _send_user_card(self, update: Update, language: str, doc: dict[str, Any], callback: str) -> None:
-        caption = post_caption(doc["title"], doc.get("description", ""))
-        if len(caption) > TELEGRAM_CAPTION_LIMIT:
-            caption = f"<b>{h(doc['title'])}</b>"
-        markup = keyboard([[(tr(language, "download"), callback)]])
         try:
-            if doc.get("poster_file_id"):
-                await update.effective_message.reply_photo(doc["poster_file_id"], caption=caption, parse_mode=ParseMode.HTML, reply_markup=markup)
-            else:
-                await reply(update, caption, reply_markup=markup)
-        except TelegramError:
-            await reply(update, f"<b>{h(doc['title'])}</b>", reply_markup=markup)
+            contents_collection.insert_one(doc)
+            await query.edit_message_text(f"✅ <b>{doc['title']}</b> saved successfully!", parse_mode=ParseMode.HTML)
+        except Exception as e:
+            await query.edit_message_text(f"❌ Error saving movie: Title might already exist.\n{e}", parse_mode=ParseMode.HTML)
+            
+        await asyncio.sleep(2)
+        await admin_command(update, context, from_callback=True)
+        return ConversationHandler.END
 
-    async def _user_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE, data: str) -> None:
-        query = update.callback_query
-        assert query
-        _, language = await self._config_language()
-        await self._answer(update)
-        if data.startswith("open:"):
-            parts = data.split(":")
-            content_id = parts[1]
-            doc = await self.store.find_content(content_id)
-            if not doc:
-                await query.answer(tr(language, "content_not_found"), show_alert=True)
-                return
-            if doc["content_type"] == "movie":
-                rows = [[(quality, f"quality:{content_id}:m:{quality}")] for quality in doc.get("files", {})]
-                await query.edit_message_reply_markup(reply_markup=keyboard(rows))
-                return
-            season_id = parts[2] if len(parts) > 2 else None
-            episode_id = parts[3] if len(parts) > 3 else None
-            season = self._season(doc, season_id or "")
-            if not season:
-                await query.answer(tr(language, "content_not_found"), show_alert=True)
-                return
-            if not episode_id:
-                rows = [[(episode["title"][:50], f"open:{content_id}:{season_id}:{episode['eid']}")] for episode in season.get("episodes", [])]
-                await query.edit_message_text(f"<b>{h(doc['title'])} — {h(season['title'])}</b>", parse_mode=ParseMode.HTML, reply_markup=keyboard(rows))
-                return
-            episode = self._episode(season, episode_id)
-            if not episode:
-                return
-            rows = [[(quality, f"quality:{content_id}:{season_id}:{episode_id}:{quality}")] for quality in episode.get("files", {})]
-            await query.edit_message_text(tr(language, "select_quality", title=episode["title"]), parse_mode=ParseMode.HTML, reply_markup=keyboard(rows))
-            return
-        if data.startswith("quality:"):
-            if update.effective_chat.type != "private":
-                await query.answer(tr(language, "private_only"), show_alert=True)
-                return
-            parts = data.split(":")
-            content_id = parts[1]
-            doc = await self.store.find_content(content_id)
-            if not doc:
-                await query.answer(tr(language, "content_not_found"), show_alert=True)
-                return
-            reference: dict[str, Any] | None = None
-            title = doc["title"]
-            if len(parts) == 4 and parts[2] == "m":
-                reference = doc.get("files", {}).get(parts[3])
-            elif len(parts) == 5:
-                season = self._season(doc, parts[2])
-                episode = self._episode(season, parts[3])
-                reference = episode.get("files", {}).get(parts[4]) if episode else None
-                if season and episode:
-                    title = f"{title} — {season['title']} — {episode['title']}"
-            if not reference:
-                await query.answer(tr(language, "no_quality"), show_alert=True)
-                return
-            await query.answer(tr(language, "sending"))
-            try:
-                if reference.get("kind") == "video":
-                    sent = await context.bot.send_video(chat_id=update.effective_chat.id, video=reference["file_id"], caption=h(title), parse_mode=ParseMode.HTML)
-                else:
-                    sent = await context.bot.send_document(chat_id=update.effective_chat.id, document=reference["file_id"], caption=h(title), parse_mode=ParseMode.HTML)
-                config = await self.store.get_config()
-                seconds = int(config.get("auto_delete_seconds", 0) or 0)
-                if seconds:
-                    asyncio.create_task(self._delete_later(context, sent.chat_id, sent.message_id, seconds))
-            except RetryAfter as exc:
-                await query.answer(f"Try again in {int(float(exc.retry_after)) + 1}s", show_alert=True)
-            except TelegramError:
-                LOG.exception("File send failed")
-                await query.answer(tr(language, "no_quality"), show_alert=True)
+    # Wait for file
+    quality = query.data.replace("mqual_", "")
+    context.user_data['current_quality'] = quality
+    await query.edit_message_text(f"Send the video/file for <b>{quality}</b>:", parse_mode=ParseMode.HTML)
+    return M_GET_QUAL
 
-    @staticmethod
-    async def _delete_later(context: ContextTypes.DEFAULT_TYPE, chat_id: int, message_id: int, seconds: int) -> None:
-        await asyncio.sleep(seconds)
-        try:
-            await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
-        except TelegramError:
-            pass
+async def movie_quality_receive(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    fid = None
+    if update.message.video:
+        fid = update.message.video.file_id
+    elif update.message.document:
+        fid = update.message.document.file_id
+        
+    if not fid:
+        await update.message.reply_text("Please send a valid video or document file.")
+        return M_GET_QUAL
+        
+    quality = context.user_data['current_quality']
+    context.user_data['files'][quality] = fid
+    await update.message.reply_text(f"✅ {quality} file saved!")
+    await show_quality_menu(update.message, context, is_series=False)
+    return M_GET_QUAL
 
+# ============================================
+# ===       ADD SERIES FLOW                ===
+# ============================================
+async def start_add_series(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    context.user_data.clear()
+    context.user_data['content_type'] = 'series'
+    context.user_data['seasons'] = []
+    await query.edit_message_text("📺 <b>Send Web Series Title:</b>\n\n/cancel - To stop.", parse_mode=ParseMode.HTML)
+    return S_GET_TITLE
 
-class WebhookRuntime:
-    """A Waitress/Flask front end with PTB on one dedicated asyncio loop."""
+async def get_series_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['title'] = update.message.text
+    await update.message.reply_text("🖼️ <b>Send Series Poster Photo (or /skip):</b>", parse_mode=ParseMode.HTML)
+    return S_GET_POSTER
 
-    def __init__(self, settings: Settings, service: MovieSeriesBot, application: Application) -> None:
-        self.settings = settings
-        self.service = service
-        self.application = application
-        self.loop = asyncio.new_event_loop()
-        self.ready = threading.Event()
-        self.stop_requested: asyncio.Event | None = None
-        self.locks = PerUserLocks()
-        self.thread = threading.Thread(target=self._run_loop, name="telegram-async-loop", daemon=True)
-        self.web = Flask(__name__)
-        self._configure_routes()
+async def get_series_poster(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.photo:
+        context.user_data['poster_id'] = update.message.photo[-1].file_id
+    elif update.message.text != '/skip':
+        await update.message.reply_text("Please send a valid photo or /skip.")
+        return S_GET_POSTER
+    await update.message.reply_text("📝 <b>Send Series Description (or /skip):</b>", parse_mode=ParseMode.HTML)
+    return S_GET_DESC
 
-    def _configure_routes(self) -> None:
-        @self.web.get("/")
-        def health() -> Response:
-            return Response("ok", status=200, mimetype="text/plain")
-
-        @self.web.post(f"/{self.settings.webhook_path}")
-        def telegram_webhook() -> Response:
-            supplied = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
-            if not secrets.compare_digest(supplied, self.settings.webhook_secret):
-                abort(403)
-            payload = request.get_json(silent=True)
-            if not isinstance(payload, dict):
-                abort(400)
-            try:
-                update = Update.de_json(payload, self.application.bot)
-                asyncio.run_coroutine_threadsafe(self._process(update), self.loop)
-            except Exception:
-                LOG.exception("Webhook payload could not be scheduled")
-                abort(400)
-            # Telegram only needs a quick acknowledgement; the event loop does the work.
-            return Response("OK", status=200, mimetype="text/plain")
-
-    async def _process(self, update: Update) -> None:
-        try:
-            await self.locks.run(update, lambda: self.application.process_update(update))
-        except Exception:
-            LOG.exception("Telegram update failed")
-
-    def _run_loop(self) -> None:
-        asyncio.set_event_loop(self.loop)
-        self.loop.run_until_complete(self._startup())
-        self.loop.run_until_complete(self.stop_requested.wait())
-        self.loop.run_until_complete(self._shutdown())
-        self.loop.close()
-
-    async def _startup(self) -> None:
-        await self.service.store.initialize()
-        await self.application.initialize()
-        await self.application.start()
-        url = f"{self.settings.webhook_public_url}/{self.settings.webhook_path}"
-        await self.application.bot.set_webhook(
-            url=url,
-            secret_token=self.settings.webhook_secret,
-            allowed_updates=Update.ALL_TYPES,
-            drop_pending_updates=False,
-        )
-        self.stop_requested = asyncio.Event()
-        LOG.info("Webhook registered at %s", url)
-        self.ready.set()
-
-    async def _shutdown(self) -> None:
-        try:
-            await self.application.bot.delete_webhook(drop_pending_updates=False)
-        finally:
-            await self.application.stop()
-            await self.application.shutdown()
-            await self.service.store.client.close()
-
-    def start(self) -> None:
-        self.thread.start()
-        if not self.ready.wait(timeout=30):
-            raise RuntimeError("Bot startup timed out; inspect logs for MongoDB or Telegram errors")
-
-    def stop(self) -> None:
-        if self.stop_requested is not None and not self.loop.is_closed():
-            self.loop.call_soon_threadsafe(self.stop_requested.set)
-            self.thread.join(timeout=20)
-
-
-def build_application(service: MovieSeriesBot, settings: Settings) -> Application:
-    app = (
-        Application.builder()
-        .token(settings.token)
-        .connect_timeout(15)
-        .read_timeout(30)
-        .write_timeout(30)
-        .pool_timeout(30)
-        .connection_pool_size(32)
-        .build()
-    )
-    app.add_handler(CommandHandler("start", service.command_start))
-    app.add_handler(CommandHandler("admin", service.command_admin))
-    app.add_handler(CommandHandler("menu", service.command_admin))
-    app.add_handler(CommandHandler("cancel", service.command_cancel))
-    app.add_handler(CallbackQueryHandler(service.callback))
-    app.add_handler(MessageHandler(filters.ALL, service.message))
-    return app
-
-
-def main() -> None:
-    settings = Settings.from_environment()
-    if not re.fullmatch(r"[A-Za-z0-9_-]{1,256}", settings.webhook_secret):
-        raise RuntimeError("WEBHOOK_SECRET may only contain letters, digits, _ and -")
-    store = Store(settings)
-    service = MovieSeriesBot(store, settings)
-    runtime = WebhookRuntime(settings, service, build_application(service, settings))
-    runtime.start()
-
-    def close(_signal: int, _frame: Any) -> None:
-        runtime.stop()
-
-    signal.signal(signal.SIGINT, close)
-    signal.signal(signal.SIGTERM, close)
-    LOG.info("Waitress listening on port %s", settings.port)
+async def get_series_desc(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.text != '/skip':
+        context.user_data['description'] = update.message.text
+    else:
+        context.user_data['description'] = ""
+        
+    # Save base series doc
+    doc = {
+        "title": context.user_data['title'],
+        "title_key": normalized_title(context.user_data['title']),
+        "content_type": "series",
+        "description": context.user_data.get('description', ''),
+        "poster_id": context.user_data.get('poster_id'),
+        "seasons": [],
+        "updated_at": datetime.now()
+    }
     try:
-        serve(runtime.web, host="0.0.0.0", port=settings.port, threads=12)
-    finally:
-        runtime.stop()
+        inserted = contents_collection.insert_one(doc)
+        context.user_data['series_id'] = str(inserted.inserted_id)
+        await update.message.reply_text(f"✅ Series '{doc['title']}' created!\n\nNow send the <b>Season Title</b> (e.g., Season 1):", parse_mode=ParseMode.HTML)
+        return S_GET_SEASON
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: Title might already exist.\n{e}")
+        return ConversationHandler.END
 
+async def get_series_season(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    sid = compact_id()
+    context.user_data['curr_sid'] = sid
+    season_title = update.message.text
+    season = {"sid": sid, "title": season_title, "episodes": []}
+    
+    contents_collection.update_one(
+        {"_id": ObjectId(context.user_data['series_id'])},
+        {"$push": {"seasons": season}, "$set": {"updated_at": datetime.now()}}
+    )
+    
+    await update.message.reply_text(f"✅ '{season_title}' added!\n\nNow send <b>Episode Title</b> (e.g., Episode 1):", parse_mode=ParseMode.HTML)
+    context.user_data['files'] = {}
+    return S_GET_EPISODE
+
+async def get_series_episode(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['curr_ep_title'] = update.message.text
+    await show_quality_menu(update.message, context, is_series=True)
+    return S_GET_QUAL
+
+async def series_quality_select(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    if query.data == "save_series_ep":
+        if not context.user_data.get('files'):
+            await query.answer("Upload at least 1 file!", show_alert=True)
+            return S_GET_QUAL
+        
+        episode = {
+            "eid": compact_id(),
+            "title": context.user_data['curr_ep_title'],
+            "files": context.user_data['files']
+        }
+        
+        contents_collection.update_one(
+            {"_id": ObjectId(context.user_data['series_id']), "seasons.sid": context.user_data['curr_sid']},
+            {"$push": {"seasons.$.episodes": episode}, "$set": {"updated_at": datetime.now()}}
+        )
+        
+        keyboard = [
+            [InlineKeyboardButton("➕ Add Another Episode", callback_data="app_new_ep")],
+            [InlineKeyboardButton("➕ Add New Season", callback_data="app_new_season")],
+            [InlineKeyboardButton("✅ Done (Back to Admin)", callback_data="admin_menu")]
+        ]
+        await query.edit_message_text(f"✅ Episode saved! What do you want to do next?", reply_markup=InlineKeyboardMarkup(keyboard))
+        return ConversationHandler.END
+        
+    quality = query.data.replace("squal_", "")
+    context.user_data['current_quality'] = quality
+    await query.edit_message_text(f"Send the video/file for <b>{quality}</b>:", parse_mode=ParseMode.HTML)
+    return S_GET_QUAL
+
+async def series_quality_receive(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    fid = None
+    if update.message.video:
+        fid = update.message.video.file_id
+    elif update.message.document:
+        fid = update.message.document.file_id
+        
+    if not fid:
+        await update.message.reply_text("Please send a valid video or document file.")
+        return S_GET_QUAL
+        
+    quality = context.user_data['current_quality']
+    context.user_data['files'][quality] = fid
+    await update.message.reply_text(f"✅ {quality} file saved!")
+    await show_quality_menu(update.message, context, is_series=True)
+    return S_GET_QUAL
+# ============================================
+# ===       PRIME LEVEL BOT (PART 3)       ===
+# ===       MANAGE CONTENT & POST GEN      ===
+# ============================================
+
+# ============================================
+# ===       MANAGE CONTENT FLOW            ===
+# ============================================
+async def menu_manage_content(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    keyboard = [
+        [InlineKeyboardButton("🗑️ Delete Movie", callback_data="manage_del_movie"),
+         InlineKeyboardButton("🗑️ Delete Series", callback_data="manage_del_series")],
+        [InlineKeyboardButton("⬅️ Back to Admin Menu", callback_data="admin_menu")]
+    ]
+    await query.edit_message_text("🗑️ <b>Manage Content</b>\n\nSelect content type to delete:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+
+async def manage_del_movie_list(update: Update, context: ContextTypes.DEFAULT_TYPE, page: int = 0):
+    query = update.callback_query
+    if query.data.startswith("del_m_page_"):
+        page = int(query.data.split("_")[-1])
+    await query.answer()
+    
+    items, kb = await build_paginated_keyboard(contents_collection, page, "del_m_page_", "del_item_", "menu_manage_content", {"content_type": "movie"})
+    if not items and page == 0:
+        await query.edit_message_text("❌ No movies found.", reply_markup=kb)
+    else:
+        await query.edit_message_text(f"🗑️ Select Movie to Delete (Page {page+1}):", reply_markup=kb)
+
+async def manage_del_series_list(update: Update, context: ContextTypes.DEFAULT_TYPE, page: int = 0):
+    query = update.callback_query
+    if query.data.startswith("del_s_page_"):
+        page = int(query.data.split("_")[-1])
+    await query.answer()
+    
+    items, kb = await build_paginated_keyboard(contents_collection, page, "del_s_page_", "del_item_", "menu_manage_content", {"content_type": "series"})
+    if not items and page == 0:
+        await query.edit_message_text("❌ No web series found.", reply_markup=kb)
+    else:
+        await query.edit_message_text(f"🗑️ Select Web Series to Delete (Page {page+1}):", reply_markup=kb)
+
+async def delete_item_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    item_id = query.data.replace("del_item_", "")
+    contents_collection.delete_one({"_id": ObjectId(item_id)})
+    await query.edit_message_text("✅ Content successfully deleted!")
+    await asyncio.sleep(2)
+    await admin_command(update, context, from_callback=True)
+
+# ============================================
+# ===       POST GENERATOR FLOW            ===
+# ============================================
+async def menu_post_gen(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    config = await get_config()
+    dest = config.get("default_destination", "Not Set")
+    
+    keyboard = [
+        [InlineKeyboardButton(f"🎯 Set Default ID ({dest})", callback_data="post_set_dest")],
+        [InlineKeyboardButton("🎬 Movie Post", callback_data="post_sel_movie_0"),
+         InlineKeyboardButton("📺 Series Post", callback_data="post_sel_series_0")],
+        [InlineKeyboardButton("⬅️ Back to Admin Menu", callback_data="admin_menu")]
+    ]
+    await query.edit_message_text("✍️ <b>Post Generator</b>\n\nGenerate beautiful posts with shortlinks seamlessly.", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+
+async def post_set_dest_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.callback_query.answer()
+    await update.callback_query.edit_message_text("Send Default Channel/Group ID (e.g. -10012345 or @MyChannel):")
+    return SET_DEST_INPUT
+
+async def post_save_dest(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    config_collection.update_one({"_id": "bot_config"}, {"$set": {"default_destination": update.message.text}})
+    await update.message.reply_text("✅ Default Destination Saved!")
+    await admin_command(update, context, from_callback=False)
+    return ConversationHandler.END
+
+async def post_select_list(update: Update, context: ContextTypes.DEFAULT_TYPE, content_type: str, page: int = 0):
+    query = update.callback_query
+    if query.data.startswith("post_sel_"):
+        parts = query.data.split("_")
+        content_type = parts[2]
+        page = int(parts[3])
+    await query.answer()
+    
+    prefix = f"post_sel_{content_type}_"
+    items, kb = await build_paginated_keyboard(contents_collection, page, prefix, "post_pick_", "menu_post_gen", {"content_type": content_type})
+    
+    if not items and page == 0:
+        await query.edit_message_text(f"❌ No {content_type} found.", reply_markup=kb)
+    else:
+        await query.edit_message_text(f"Select {content_type.capitalize()} to Post (Page {page+1}):", reply_markup=kb)
+    return POST_GET_ITEM
+
+async def post_pick_item(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    item_id = query.data.replace("post_pick_", "")
+    doc = contents_collection.find_one({"_id": ObjectId(item_id)})
+    if not doc:
+        return ConversationHandler.END
+        
+    bot_username = (await context.bot.get_me()).username
+    deep_link = f"https://t.me/{bot_username}?start=dl_{item_id}"
+    context.user_data['post_doc'] = doc
+    context.user_data['deep_link'] = deep_link
+    context.user_data['temp_title'] = doc['title']
+    context.user_data['temp_desc'] = doc.get('description', '')
+    
+    await query.edit_message_text(f"✅ <b>{doc['title']}</b> selected.\n\nOriginal Deep Link:\n<code>{deep_link}</code>\n\nSend the <b>Shortened Link</b> (or send the same link if no shortener is used):", parse_mode=ParseMode.HTML)
+    return POST_GET_LINK
+
+async def post_get_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['short_link'] = update.message.text
+    await show_post_preview(update.message, context)
+    return POST_PREVIEW
+
+async def show_post_preview(message, context):
+    config = await get_config()
+    doc = context.user_data['post_doc']
+    title = context.user_data['temp_title']
+    
+    # Formatter applies font settings to caption template
+    caption_template = config.get("messages", {}).get("post_gen_caption", "🎬 <b>{title}</b>\n\n{description}\n\n<f>Neeche button se download karein!</f>")
+    raw_desc = context.user_data['temp_desc']
+    formatted_desc = quote_text(raw_desc, config.get("quotes_enabled", True))
+    
+    # Apply vars
+    caption_raw = caption_template.format(title=title, description=formatted_desc)
+    
+    # Apply fonts
+    font_settings = config.get("appearance", {"font": "default", "style": "normal"})
+    final_caption = await apply_font_formatting(caption_raw, font_settings)
+    
+    # Build Buttons
+    kb = []
+    links = config.get("links", {})
+    if links.get("backup"): 
+        kb.append(InlineKeyboardButton("🔄 Backup", url=links["backup"]))
+    if config.get("donate_qr_id") or links.get("help"): 
+        kb.append(InlineKeyboardButton("🆘 Support", url=links.get("help", "https://t.me/")))
+    
+    btn_row = [InlineKeyboardButton("📥 Download", url=context.user_data['short_link'])]
+    reply_markup = InlineKeyboardMarkup([kb, btn_row] if kb else [btn_row])
+    
+    context.user_data['final_kb'] = reply_markup
+    context.user_data['final_cap'] = final_caption
+
+    control_kb = [
+        [InlineKeyboardButton("✅ Publish to Default ID", callback_data="post_pub_def"),
+         InlineKeyboardButton("🚀 Publish to Custom ID", callback_data="post_pub_cust")],
+        [InlineKeyboardButton("✏️ Edit Temp Title", callback_data="post_edit_t"),
+         InlineKeyboardButton("✏️ Edit Temp Desc", callback_data="post_edit_d")],
+        [InlineKeyboardButton("⬅️ Cancel", callback_data="admin_menu")]
+    ]
+    
+    if doc.get('poster_id'):
+        await message.reply_photo(photo=doc['poster_id'], caption=final_caption, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(control_kb))
+    else:
+        await message.reply_text(text=final_caption, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(control_kb))
+
+async def post_handle_controls(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    if query.data == "post_edit_t":
+        await query.message.reply_text("Send temporary Title for this post:")
+        return POST_EDIT_TITLE
+    elif query.data == "post_edit_d":
+        await query.message.reply_text("Send temporary Description for this post:")
+        return POST_EDIT_DESC
+    elif query.data == "post_pub_def":
+        config = await get_config()
+        dest = config.get("default_destination")
+        if not dest:
+            await query.answer("No Default Destination Set!", show_alert=True)
+            return POST_PREVIEW
+        await execute_publish(context, query.message, dest)
+        return ConversationHandler.END
+    elif query.data == "post_pub_cust":
+        await query.message.reply_text("Send Target Channel/Group ID:")
+        return POST_GET_DEST
+    elif query.data == "admin_menu":
+        await admin_command(update, context, from_callback=True)
+        return ConversationHandler.END
+
+async def post_edit_t(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['temp_title'] = update.message.text
+    await show_post_preview(update.message, context)
+    return POST_PREVIEW
+
+async def post_edit_d(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['temp_desc'] = update.message.text
+    await show_post_preview(update.message, context)
+    return POST_PREVIEW
+
+async def post_get_dest(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await execute_publish(context, update.message, update.message.text)
+    return ConversationHandler.END
+
+async def execute_publish(context, message, chat_id):
+    try:
+        if context.user_data['post_doc'].get('poster_id'):
+            await context.bot.send_photo(chat_id=chat_id, photo=context.user_data['post_doc']['poster_id'], caption=context.user_data['final_cap'], reply_markup=context.user_data['final_kb'], parse_mode=ParseMode.HTML)
+        else:
+            await context.bot.send_message(chat_id=chat_id, text=context.user_data['final_cap'], reply_markup=context.user_data['final_kb'], parse_mode=ParseMode.HTML)
+        
+        await message.reply_text(f"✅ Post Published successfully to {chat_id}!")
+    except Exception as e:
+        await message.reply_text(f"❌ Error publishing: {e}")
+        
+    context.user_data.clear()
+
+# ============================================
+# ===       SETTINGS & MESSAGES            ===
+# ============================================
+async def menu_bot_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    keyboard = [
+        [InlineKeyboardButton("🌍 Language", callback_data="set_language"),
+         InlineKeyboardButton("🎨 Font Style", callback_data="set_font_style")],
+        [InlineKeyboardButton("❤️ Donation QR", callback_data="set_donate_qr"),
+         InlineKeyboardButton("🔗 Other Links", callback_data="set_links")],
+        [InlineKeyboardButton("⏱️ Auto-Delete Time", callback_data="set_autodel")],
+        [InlineKeyboardButton("⬅️ Back to Admin Menu", callback_data="admin_menu")]
+    ]
+    await query.edit_message_text("⚙️ <b>Bot Settings</b>\n\nConfigure core parameters:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+
+async def menu_msg_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    config = await get_config()
+    quote_status = "✅ Enabled" if config.get("quotes_enabled", True) else "❌ Disabled"
+    
+    keyboard = [
+        [InlineKeyboardButton("📝 Edit Welcome Msg", callback_data="msg_edit_welcome")],
+        [InlineKeyboardButton("📝 Edit Post Caption Format", callback_data="msg_edit_post_gen_caption")],
+        [InlineKeyboardButton(f"💬 Blockquotes: {quote_status}", callback_data="toggle_quotes")],
+        [InlineKeyboardButton("⬅️ Back to Admin Menu", callback_data="admin_menu")]
+    ]
+    await query.edit_message_text("⚙️ <b>Message Settings</b>\n\nEdit texts or toggle quote formatting.", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+
+async def toggle_quotes(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    config = await get_config()
+    new_stat = not config.get("quotes_enabled", True)
+    config_collection.update_one({"_id": "bot_config"}, {"$set": {"quotes_enabled": new_stat}})
+    await menu_msg_settings(update, context)
+
+async def msg_edit_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    key = query.data.replace("msg_edit_", "")
+    context.user_data['msg_key'] = key
+    config = await get_config()
+    curr = config.get("messages", {}).get(key, "Not set")
+    await query.edit_message_text(f"Editing <b>{key}</b>\n\nCurrent:\n<code>{curr}</code>\n\nSend new message (HTML & <f> tags allowed):", parse_mode=ParseMode.HTML)
+    return MSG_GET_INPUT
+
+async def msg_edit_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    config_collection.update_one({"_id": "bot_config"}, {"$set": {f"messages.{context.user_data['msg_key']}": update.message.text}})
+    await update.message.reply_text("✅ Message Updated!")
+    await admin_command(update, context, from_callback=False)
+    return ConversationHandler.END
+# ============================================
+# ===       PRIME LEVEL BOT (PART 4)       ===
+# ===       GEN LINK, BROADCAST & MAIN     ===
+# ============================================
+
+# ============================================
+# ===       GENERATE LINK FLOW             ===
+# ============================================
+async def menu_gen_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    keyboard = [
+        [InlineKeyboardButton("🎬 Movie Link", callback_data="gen_sel_movie_0"),
+         InlineKeyboardButton("📺 Series Link", callback_data="gen_sel_series_0")],
+        [InlineKeyboardButton("⬅️ Back to Admin Menu", callback_data="admin_menu")]
+    ]
+    await query.edit_message_text("🔗 <b>Generate Link</b>\n\nSelect content type:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+
+async def gen_select_list(update: Update, context: ContextTypes.DEFAULT_TYPE, content_type: str = "movie", page: int = 0):
+    query = update.callback_query
+    if query.data.startswith("gen_sel_"):
+        parts = query.data.split("_")
+        content_type = parts[2]
+        page = int(parts[3])
+    await query.answer()
+    
+    prefix = f"gen_sel_{content_type}_"
+    items, kb = await build_paginated_keyboard(contents_collection, page, prefix, "gen_pick_", "menu_gen_link", {"content_type": content_type})
+    
+    if not items and page == 0:
+        await query.edit_message_text(f"❌ No {content_type} found.", reply_markup=kb)
+    else:
+        await query.edit_message_text(f"Select {content_type.capitalize()} to Generate Link (Page {page+1}):", reply_markup=kb)
+
+async def gen_pick_item(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    item_id = query.data.replace("gen_pick_", "")
+    doc = contents_collection.find_one({"_id": ObjectId(item_id)})
+    if not doc:
+        return
+        
+    bot_username = (await context.bot.get_me()).username
+    deep_link = f"https://t.me/{bot_username}?start=dl_{item_id}"
+    
+    keyboard = [[InlineKeyboardButton("⬅️ Back", callback_data="menu_gen_link")]]
+    await query.edit_message_text(f"✅ <b>Link Generated for: {doc['title']}</b>\n\n<code>{deep_link}</code>", parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(keyboard))
+
+# ============================================
+# ===       BROADCAST & STATS              ===
+# ============================================
+async def menu_broadcast_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    total_users = users_collection.count_documents({})
+    total_movies = contents_collection.count_documents({"content_type": "movie"})
+    total_series = contents_collection.count_documents({"content_type": "series"})
+    
+    text = f"📊 <b>Bot Statistics</b>\n\n👥 Total Users: <b>{total_users}</b>\n🎬 Total Movies: <b>{total_movies}</b>\n📺 Total Series: <b>{total_series}</b>"
+    
+    keyboard = [
+        [InlineKeyboardButton("📢 Broadcast Message", callback_data="start_broadcast")],
+        [InlineKeyboardButton("⬅️ Back to Admin Menu", callback_data="admin_menu")]
+    ]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+
+async def start_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.callback_query.answer()
+    await update.callback_query.edit_message_text("📢 Send the message/photo/video you want to broadcast:\n\n/cancel to stop.")
+    return BRD_INPUT
+
+async def handle_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message
+    total_users = users_collection.count_documents({})
+    await msg.reply_text(f"⏳ Starting broadcast to {total_users} users... This might take a while.")
+    
+    sent = 0
+    failed = 0
+    users = users_collection.find({}, {"_id": 1})
+    
+    for user in users:
+        try:
+            await msg.copy(chat_id=user["_id"])
+            sent += 1
+        except RetryAfter as e:
+            await asyncio.sleep(e.retry_after + 1)
+            await msg.copy(chat_id=user["_id"])
+            sent += 1
+        except Exception:
+            failed += 1
+        await asyncio.sleep(0.05) # Prevent flood waits
+        
+    await msg.reply_text(f"✅ Broadcast Complete!\n\n📤 Sent: {sent}\n❌ Failed/Blocked: {failed}")
+    await admin_command(update, context, from_callback=False)
+    return ConversationHandler.END
+
+# ============================================
+# ===       USER DOWNLOAD FLOW             ===
+# ============================================
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    await increment_user_interaction(user.id)
+    
+    args = context.args
+    if args and args[0].startswith("dl_"):
+        await handle_deep_link(update, context, args[0].replace("dl_", ""))
+        return
+
+    text = await format_message(context, "user_welcome_basic", {"full_name": user.full_name})
+    if await is_co_admin(user.id):
+        text = await format_message(context, "user_welcome_admin")
+        
+    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+
+async def handle_deep_link(update: Update, context: ContextTypes.DEFAULT_TYPE, item_id: str):
+    doc = contents_collection.find_one({"_id": ObjectId(item_id)})
+    user_id = update.effective_user.id
+    
+    if not doc:
+        msg = await format_message(context, "user_dl_movie_not_found")
+        await context.bot.send_message(chat_id=user_id, text=msg, parse_mode=ParseMode.HTML)
+        return
+
+    if doc['content_type'] == 'movie':
+        qualities = doc.get('files', {})
+        kb = [[InlineKeyboardButton(q, callback_data=f"send_m_{item_id}_{q}")] for q in qualities]
+        msg = await format_message(context, "user_dl_select_quality", {"title": doc['title']})
+        
+        if doc.get('poster_id'):
+            await context.bot.send_photo(chat_id=user_id, photo=doc['poster_id'], caption=msg, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(kb))
+        else:
+            await context.bot.send_message(chat_id=user_id, text=msg, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(kb))
+            
+    elif doc['content_type'] == 'series':
+        seasons = doc.get('seasons', [])
+        kb = [[InlineKeyboardButton(s['title'], callback_data=f"sel_s_{item_id}_{s['sid']}")] for s in seasons]
+        msg = f"📺 <b>{doc['title']}</b>\n\nSelect a Season:"
+        
+        if doc.get('poster_id'):
+            await context.bot.send_photo(chat_id=user_id, photo=doc['poster_id'], caption=msg, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(kb))
+        else:
+            await context.bot.send_message(chat_id=user_id, text=msg, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(kb))
+
+async def user_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    data = query.data
+    user_id = query.from_user.id
+    
+    await query.answer()
+    
+    # 1. SEND MOVIE FILE
+    if data.startswith("send_m_"):
+        parts = data.split("_")
+        item_id = parts[2]
+        quality = parts[3]
+        
+        doc = contents_collection.find_one({"_id": ObjectId(item_id)})
+        file_id = doc['files'].get(quality)
+        
+        if file_id:
+            msg = await format_message(context, "user_dl_sending_file", {"movie_name": doc['title'], "quality": quality})
+            await context.bot.send_message(chat_id=user_id, text=msg, parse_mode=ParseMode.HTML)
+            sent_msg = await context.bot.send_document(chat_id=user_id, document=file_id, caption=f"🎬 <b>{doc['title']}</b> ({quality})", parse_mode=ParseMode.HTML)
+            
+            # Auto Delete Logic
+            config = await get_config()
+            del_time = config.get("delete_seconds", 300)
+            asyncio.create_task(delete_message_later(context.bot, user_id, sent_msg.message_id, del_time))
+        else:
+            err = await format_message(context, "user_dl_file_error", {"quality": quality})
+            await context.bot.send_message(chat_id=user_id, text=err, parse_mode=ParseMode.HTML)
+
+    # 2. SELECT SERIES SEASON -> SHOW EPISODES
+    elif data.startswith("sel_s_"):
+        parts = data.split("_")
+        item_id = parts[2]
+        sid = parts[3]
+        
+        doc = contents_collection.find_one({"_id": ObjectId(item_id)})
+        season = next((s for s in doc['seasons'] if s['sid'] == sid), None)
+        
+        if season:
+            kb = [[InlineKeyboardButton(e['title'], callback_data=f"sel_e_{item_id}_{sid}_{e['eid']}")] for e in season.get('episodes', [])]
+            kb.append([InlineKeyboardButton("⬅️ Back", callback_data=f"back_ser_{item_id}")])
+            await query.edit_message_caption(caption=f"📺 <b>{doc['title']} - {season['title']}</b>\n\nSelect an Episode:", reply_markup=InlineKeyboardMarkup(kb), parse_mode=ParseMode.HTML)
+
+    # 3. SELECT SERIES EPISODE -> SHOW QUALITIES
+    elif data.startswith("sel_e_"):
+        parts = data.split("_")
+        item_id = parts[2]
+        sid = parts[3]
+        eid = parts[4]
+        
+        doc = contents_collection.find_one({"_id": ObjectId(item_id)})
+        season = next((s for s in doc['seasons'] if s['sid'] == sid), None)
+        ep = next((e for e in season['episodes'] if e['eid'] == eid), None)
+        
+        if ep:
+            kb = [[InlineKeyboardButton(q, callback_data=f"send_s_{item_id}_{sid}_{eid}_{q}")] for q in ep.get('files', {})]
+            kb.append([InlineKeyboardButton("⬅️ Back", callback_data=f"sel_s_{item_id}_{sid}")])
+            await query.edit_message_caption(caption=f"📺 <b>{doc['title']} - {ep['title']}</b>\n\nSelect Quality:", reply_markup=InlineKeyboardMarkup(kb), parse_mode=ParseMode.HTML)
+
+    # 4. SEND SERIES FILE
+    elif data.startswith("send_s_"):
+        parts = data.split("_")
+        item_id = parts[2]
+        sid = parts[3]
+        eid = parts[4]
+        quality = parts[5]
+        
+        doc = contents_collection.find_one({"_id": ObjectId(item_id)})
+        season = next((s for s in doc['seasons'] if s['sid'] == sid), None)
+        ep = next((e for e in season['episodes'] if e['eid'] == eid), None)
+        file_id = ep['files'].get(quality)
+        
+        if file_id:
+            msg = await format_message(context, "user_dl_sending_file", {"movie_name": ep['title'], "quality": quality})
+            await context.bot.send_message(chat_id=user_id, text=msg, parse_mode=ParseMode.HTML)
+            sent_msg = await context.bot.send_document(chat_id=user_id, document=file_id, caption=f"📺 <b>{doc['title']} - {ep['title']}</b> ({quality})", parse_mode=ParseMode.HTML)
+            
+            # Auto Delete
+            config = await get_config()
+            del_time = config.get("delete_seconds", 300)
+            asyncio.create_task(delete_message_later(context.bot, user_id, sent_msg.message_id, del_time))
+
+    # 5. BACK BUTTON TO SERIES SEASONS
+    elif data.startswith("back_ser_"):
+        item_id = data.replace("back_ser_", "")
+        doc = contents_collection.find_one({"_id": ObjectId(item_id)})
+        seasons = doc.get('seasons', [])
+        kb = [[InlineKeyboardButton(s['title'], callback_data=f"sel_s_{item_id}_{s['sid']}")] for s in seasons]
+        await query.edit_message_caption(caption=f"📺 <b>{doc['title']}</b>\n\nSelect a Season:", reply_markup=InlineKeyboardMarkup(kb), parse_mode=ParseMode.HTML)
+
+
+async def delete_message_later(bot, chat_id: int, message_id: int, seconds: int):
+    try:
+        await asyncio.sleep(seconds)
+        await bot.delete_message(chat_id=chat_id, message_id=message_id)
+    except Exception as e:
+        logger.warning(f"Auto-delete error: {e}")
+
+# ============================================
+# ===       WEBHOOK SERVER (FLASK)         ===
+# ============================================
+app = Flask(__name__)
+bot_app = None
+bot_loop = None
+
+@app.route('/')
+def home():
+    return "Prime Level Bot is Running!", 200
+
+@app.route(f"/{BOT_TOKEN}", methods=['POST'])
+def webhook():
+    if request.is_json:
+        update = Update.de_json(request.get_json(), bot_app.bot)
+        asyncio.run_coroutine_threadsafe(bot_app.process_update(update), bot_loop)
+        return "OK", 200
+    return "Bad Request", 400
+
+def run_async(loop, application):
+    global bot_loop
+    bot_loop = loop
+    asyncio.set_event_loop(loop)
+    
+    if WEBHOOK_URL:
+        url = f"{WEBHOOK_URL}/{BOT_TOKEN}"
+        try:
+            httpx.get(f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook?url={url}")
+            logger.info(f"Webhook set to {url}")
+        except Exception as e:
+            logger.error(f"Failed to set webhook: {e}")
+            
+    loop.run_until_complete(application.initialize())
+    loop.run_until_complete(application.start())
+    loop.run_forever()
+
+# ============================================
+# ===       MAIN FUNCTION & HANDLERS       ===
+# ============================================
+def main():
+    global bot_app
+    defaults = Defaults(parse_mode=ParseMode.HTML)
+    bot_app = Application.builder().token(BOT_TOKEN).defaults(defaults).build()
+
+    cancel_handler = CommandHandler("cancel", cancel_flow)
+
+    # CONVERSATION: ADD MOVIE
+    add_movie_conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(start_add_movie, pattern="^start_add_movie$")],
+        states={
+            M_GET_TITLE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_movie_title)],
+            M_GET_POSTER: [MessageHandler(filters.PHOTO | filters.TEXT, get_movie_poster)],
+            M_GET_DESC: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_movie_desc)],
+            M_GET_QUAL: [
+                CallbackQueryHandler(movie_quality_select, pattern="^(mqual_|save_)"),
+                MessageHandler(filters.VIDEO | filters.Document.ALL, movie_quality_receive)
+            ]
+        },
+        fallbacks=[cancel_handler, CallbackQueryHandler(cancel_flow, pattern="^admin_menu$")]
+    )
+
+    # CONVERSATION: ADD SERIES
+    add_series_conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(start_add_series, pattern="^start_add_series$")],
+        states={
+            S_GET_TITLE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_series_title)],
+            S_GET_POSTER: [MessageHandler(filters.PHOTO | filters.TEXT, get_series_poster)],
+            S_GET_DESC: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_series_desc)],
+            S_GET_SEASON: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_series_season)],
+            S_GET_EPISODE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_series_episode)],
+            S_GET_QUAL: [
+                CallbackQueryHandler(series_quality_select, pattern="^(squal_|save_)"),
+                MessageHandler(filters.VIDEO | filters.Document.ALL, series_quality_receive)
+            ]
+        },
+        fallbacks=[cancel_handler, CallbackQueryHandler(cancel_flow, pattern="^admin_menu$")]
+    )
+
+    # CONVERSATION: POST GENERATOR
+    post_gen_conv = ConversationHandler(
+        entry_points=[
+            CallbackQueryHandler(post_select_list, pattern="^post_sel_"),
+            CallbackQueryHandler(post_set_dest_prompt, pattern="^post_set_dest$")
+        ],
+        states={
+            POST_GET_ITEM: [
+                CallbackQueryHandler(post_pick_item, pattern="^post_pick_"),
+                CallbackQueryHandler(post_select_list, pattern="^post_sel_")
+            ],
+            POST_GET_LINK: [MessageHandler(filters.TEXT & ~filters.COMMAND, post_get_link)],
+            POST_PREVIEW: [CallbackQueryHandler(post_handle_controls, pattern="^(post_|admin_menu)")],
+            POST_EDIT_TITLE: [MessageHandler(filters.TEXT & ~filters.COMMAND, post_edit_t)],
+            POST_EDIT_DESC: [MessageHandler(filters.TEXT & ~filters.COMMAND, post_edit_d)],
+            POST_GET_DEST: [MessageHandler(filters.TEXT & ~filters.COMMAND, post_get_dest)],
+            SET_DEST_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, post_save_dest)]
+        },
+        fallbacks=[cancel_handler, CallbackQueryHandler(cancel_flow, pattern="^admin_menu$")]
+    )
+
+    # CONVERSATION: MESSAGE EDITOR
+    msg_edit_conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(msg_edit_start, pattern="^msg_edit_")],
+        states={MSG_GET_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, msg_edit_save)]},
+        fallbacks=[cancel_handler, CallbackQueryHandler(cancel_flow, pattern="^admin_menu$")]
+    )
+
+    # CONVERSATION: BROADCAST
+    broadcast_conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(start_broadcast, pattern="^start_broadcast$")],
+        states={BRD_INPUT: [MessageHandler(filters.ALL & ~filters.COMMAND, handle_broadcast)]},
+        fallbacks=[cancel_handler, CallbackQueryHandler(cancel_flow, pattern="^admin_menu$")]
+    )
+
+    # BASE COMMANDS
+    bot_app.add_handler(CommandHandler("start", start_command))
+    bot_app.add_handler(CommandHandler(["admin", "menu"], admin_command))
+    
+    # ADD CONVERSATION HANDLERS
+    bot_app.add_handler(add_movie_conv)
+    bot_app.add_handler(add_series_conv)
+    bot_app.add_handler(post_gen_conv)
+    bot_app.add_handler(msg_edit_conv)
+    bot_app.add_handler(broadcast_conv)
+
+    # GENERAL CALLBACK HANDLERS
+    bot_app.add_handler(CallbackQueryHandler(admin_command, pattern="^admin_menu$"))
+    bot_app.add_handler(CallbackQueryHandler(menu_add_content, pattern="^menu_add_content$"))
+    bot_app.add_handler(CallbackQueryHandler(menu_manage_content, pattern="^menu_manage_content$"))
+    bot_app.add_handler(CallbackQueryHandler(menu_post_gen, pattern="^menu_post_gen$"))
+    bot_app.add_handler(CallbackQueryHandler(menu_msg_settings, pattern="^menu_msg_settings$"))
+    bot_app.add_handler(CallbackQueryHandler(menu_bot_settings, pattern="^menu_bot_settings$"))
+    bot_app.add_handler(CallbackQueryHandler(menu_broadcast_stats, pattern="^menu_broadcast_stats$"))
+    bot_app.add_handler(CallbackQueryHandler(menu_gen_link, pattern="^menu_gen_link$"))
+    
+    # Gen Link pagination & selection
+    bot_app.add_handler(CallbackQueryHandler(gen_select_list, pattern="^gen_sel_"))
+    bot_app.add_handler(CallbackQueryHandler(gen_pick_item, pattern="^gen_pick_"))
+    
+    # Manage Content pagination & delete
+    bot_app.add_handler(CallbackQueryHandler(manage_del_movie_list, pattern="^manage_del_movie$|^del_m_page_"))
+    bot_app.add_handler(CallbackQueryHandler(manage_del_series_list, pattern="^manage_del_series$|^del_s_page_"))
+    bot_app.add_handler(CallbackQueryHandler(delete_item_confirm, pattern="^del_item_"))
+    
+    # Toggle Quotes
+    bot_app.add_handler(CallbackQueryHandler(toggle_quotes, pattern="^toggle_quotes$"))
+    
+    # User Callback Handlers (Files & Series nav)
+    bot_app.add_handler(CallbackQueryHandler(user_callback_handler, pattern="^(send_m_|sel_s_|sel_e_|send_s_|back_ser_)"))
+
+    # SERVER THREAD
+    loop = asyncio.new_event_loop()
+    threading.Thread(target=run_async, args=(loop, bot_app)).start()
+    
+    port = int(os.environ.get("PORT", 8080))
+    serve(app, host='0.0.0.0', port=port)
 
 if __name__ == "__main__":
     main()
