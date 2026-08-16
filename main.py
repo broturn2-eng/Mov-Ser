@@ -3836,12 +3836,20 @@ async def set_links_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['link_type'] = "download"
         text = await format_message(context, "admin_set_link_download")
         back_button = "back_to_links"
-    elif link_type == "help_link": # NAYA
+    elif link_type == "help_link":
         context.user_data['link_type'] = "help"
         text = await format_message(context, "admin_set_link_help")
         back_button = "back_to_links"
+    elif link_type == "verify_link":
+        context.user_data['link_type'] = "verify"
+        text = "✅ <b>Verify / How-to-Download Link</b> bhejo:\n(Example: https://t.me/... or any URL)\n\n/skip - Clear\n/cancel - Cancel"
+        back_button = "back_to_links"
+    elif link_type == "request_link":
+        context.user_data['link_type'] = "request"
+        text = "🎬 <b>Request a Movie Link</b> bhejo:\n(Example: https://t.me/... or Google Form)\n\n/skip - Clear\n/cancel - Cancel"
+        back_button = "back_to_links"
     else:
-        text = await format_message(context, "admin_set_link_invalid")
+        text = "❌ Invalid link type."
         await query.answer(text, show_alert=True)
         return ConversationHandler.END
 
@@ -3849,13 +3857,18 @@ async def set_links_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return CL_GET_LINK 
 
 async def get_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    link_url = update.message.text
-    link_type = context.user_data['link_type']
+    link_url = update.message.text.strip()
+    link_type = context.user_data.get('link_type')
+    if not link_type:
+        await update.message.reply_text("❌ Error: link type missing. Try again.")
+        return ConversationHandler.END
     config_collection.update_one({"_id": "bot_config"}, {"$set": {f"links.{link_type}": link_url}}, upsert=True)
     logger.info(f"{link_type} link update ho gaya: {link_url}")
-    text = await format_message(context, "admin_set_link_success", {"link_type": link_type})
-    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
-    await other_links_menu(update, context)
+    await update.message.reply_text(f"✅ <b>{link_type}</b> link saved:\n<code>{link_url}</code>", parse_mode=ParseMode.HTML)
+    try:
+        await other_links_menu(update, context)
+    except Exception:
+        pass
     context.user_data.clear()
     return ConversationHandler.END
 
@@ -4432,26 +4445,30 @@ async def set_verify_video_start(update: Update, context: ContextTypes.DEFAULT_T
     query = update.callback_query
     await query.answer()
     await query.edit_message_text(
-        "🎬 <b>Verify How-To Video</b>\n\nAb mujhe <b>video</b> bhejo (m4 / mp4) jo users ko 'How to Download' dikhega.\\n\\n/skip - Clear\\n/cancel - Cancel",
+        "🎬 <b>Verify How-To Video</b>\n\nAb mujhe <b>video</b> bhejo (mp4) jo users ko How to Verify dikhega.\n\n/skip - Clear\n/cancel - Cancel",
         parse_mode=ParseMode.HTML
     )
     return VERIFY_VIDEO
 
 async def set_verify_video_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.video and not update.message.document:
-        await update.message.reply_text("Please video bhejo.")
+        await update.message.reply_text("Please send a video file.")
         return VERIFY_VIDEO
     file_id = None
     if update.message.video:
         file_id = update.message.video.file_id
     elif update.message.document:
         file_id = update.message.document.file_id
+    if not file_id:
+        await update.message.reply_text("❌ Please send a <b>video</b> (not text).", parse_mode=ParseMode.HTML)
+        return VERIFY_VIDEO
     config_collection.update_one(
         {"_id": "bot_config"},
         {"$set": {"verify_video_id": file_id}},
         upsert=True
     )
     await update.message.reply_text("✅ Verify how-to video save ho gaya!")
+    context.user_data.clear()
     return ConversationHandler.END
 
 async def set_verify_video_clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -6350,7 +6367,7 @@ def main():
         entry_points=[CallbackQueryHandler(set_verify_video_start, pattern="^admin_set_verify_video$")],
         states={
             VERIFY_VIDEO: [
-                MessageHandler(filters.VIDEO | filters.Document.ALL, set_verify_video_save),
+                MessageHandler(filters.VIDEO | filters.ANIMATION | filters.Document.ALL, set_verify_video_save),
                 CommandHandler("skip", set_verify_video_clear),
             ]
         },
