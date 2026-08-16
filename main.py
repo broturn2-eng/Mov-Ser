@@ -3253,7 +3253,15 @@ async def post_edit_title_start(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def post_edit_title_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     new_title = update.message.text.strip()
+    old_title = context.user_data.get('post_edit_title', '')
     context.user_data['post_edit_title'] = new_title
+    
+    # Body mein bhi purana title ho to replace kar do
+    body = context.user_data.get('post_edit_body', '')
+    if old_title and old_title in body:
+        body = body.replace(old_title, new_title)
+        context.user_data['post_edit_body'] = body
+    
     caption = await _rebuild_post_caption(context)
     await update.message.reply_text("✅ Title updated.", parse_mode=ParseMode.HTML)
     await update.message.reply_text(
@@ -3271,19 +3279,27 @@ async def post_edit_desc_start(update: Update, context: ContextTypes.DEFAULT_TYP
 
 async def post_edit_desc_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     new_desc = update.message.text.strip()
-    # Body = description + download line keep
     old_body = context.user_data.get('post_edit_body', '')
-    # Keep the download instruction line if present
+    
+    # Download instruction line preserve karo
     download_line = ""
     for line in old_body.split('\n'):
-        if 'Download' in line or 'download' in line:
-            download_line = line
+        if 'Download' in line or 'download' in line or 'Press On' in line:
+            download_line = line.strip()
             break
-    if download_line:
-        context.user_data['post_edit_body'] = f"<b>📖 Synopsis:</b>\n{new_desc}\n\n{download_line}"
-    else:
-        context.user_data['post_edit_body'] = f"<b>📖 Synopsis:</b>\n{new_desc}\n\nNeeche [Download] button dabake download karein!"
     
+    # User jo bheje woh pure body ban jaye (custom format support)
+    # Agar user ne HTML tags nahi bheje to plain text as synopsis
+    if '<' in new_desc:
+        # User ne HTML/formatted text bheja - as is use karo
+        new_body = new_desc
+    else:
+        new_body = f"<b>📖 Synopsis:</b>\n{new_desc}"
+    
+    if download_line and download_line not in new_body:
+        new_body = new_body + f"\n\n{download_line}"
+    
+    context.user_data['post_edit_body'] = new_body
     caption = await _rebuild_post_caption(context)
     await update.message.reply_text("✅ Description updated.", parse_mode=ParseMode.HTML)
     await update.message.reply_text(
@@ -4821,14 +4837,26 @@ async def download_button_handler(update: Update, context: ContextTypes.DEFAULT_
         ep_num = parts[2] if len(parts) > 2 else None
         
         anime_doc = None
+        anime_key = anime_key.strip()
+        logger.info(f"Download lookup key: '{anime_key}'")
+        
+        # Try ObjectId
         try:
-            anime_doc = animes_collection.find_one({"_id": ObjectId(anime_key)})
-        except Exception:
-            logger.warning(f"ObjectId '{anime_key}' nahi mila. Name se search kar raha hoon...")
+            if len(anime_key) == 24:
+                anime_doc = animes_collection.find_one({"_id": ObjectId(anime_key)})
+        except Exception as e:
+            logger.warning(f"ObjectId lookup failed for '{anime_key}': {e}")
+        
+        # Try exact name
+        if not anime_doc:
             anime_doc = animes_collection.find_one({"name": anime_key})
         
+        # Try case-insensitive name
         if not anime_doc:
-            logger.error(f"Anime '{anime_key}' na ID se mila na Name se.")
+            anime_doc = animes_collection.find_one({"name": {"$regex": f"^{anime_key}$", "$options": "i"}})
+        
+        if not anime_doc:
+            logger.error(f"Content '{anime_key}' na ID se mila na Name se.")
             msg = await format_message(context, "user_dl_anime_not_found")
             await context.bot.send_message(user_id, msg, parse_mode=ParseMode.HTML)
             
