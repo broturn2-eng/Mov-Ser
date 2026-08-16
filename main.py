@@ -2882,13 +2882,32 @@ async def generate_post_ask_chat(update: Update, context: ContextTypes.DEFAULT_T
         post_type = context.user_data.get('post_type')
         dl_callback_data = f"dl{anime_id}" 
         
+        # Safe format: saare possible keys pass karo (DB custom template me series_name ho to bhi error na aaye)
+        def _safe_caption_format(template, **kwargs):
+            kwargs.setdefault('anime_name', kwargs.get('series_name') or kwargs.get('movie_name') or kwargs.get('name') or '')
+            kwargs.setdefault('series_name', kwargs.get('anime_name', ''))
+            kwargs.setdefault('movie_name', kwargs.get('anime_name', ''))
+            kwargs.setdefault('name', kwargs.get('anime_name', ''))
+            kwargs.setdefault('description', kwargs.get('description', '') or '')
+            kwargs.setdefault('season_name', kwargs.get('season_name', '') or '')
+            kwargs.setdefault('ep_num', kwargs.get('ep_num', '') or '')
+            try:
+                return template.format(**kwargs)
+            except KeyError as ke:
+                missing = str(ke).strip("'\"")
+                kwargs[missing] = ''
+                try:
+                    return template.format(**kwargs)
+                except Exception:
+                    return template
+        
         if post_type in ('post_gen_anime', 'post_gen_movie'):
             context.user_data['is_episode_post'] = False
             poster_id = anime_doc.get('poster_id')
             description = anime_doc.get('description', '') or ""
             
             caption_template = await format_message(context, "post_gen_anime_caption")
-            caption = caption_template.format(anime_name=anime_name, description=description)
+            caption = _safe_caption_format(caption_template, anime_name=anime_name, series_name=anime_name, movie_name=anime_name, description=description)
         
         elif not ep_num and season_name:
             context.user_data['is_episode_post'] = False
@@ -2899,14 +2918,14 @@ async def generate_post_ask_chat(update: Update, context: ContextTypes.DEFAULT_T
             description = season_data.get("_description") or anime_doc.get('description', '') or ""
             
             caption_template = await format_message(context, "post_gen_season_caption")
-            caption = caption_template.format(anime_name=anime_name, season_name=season_name, description=description)
+            caption = _safe_caption_format(caption_template, anime_name=anime_name, series_name=anime_name, season_name=season_name, description=description)
     
         elif ep_num:
             context.user_data['is_episode_post'] = True
             dl_callback_data = f"dl{anime_id}__{season_name}__{ep_num}" 
             
             caption_template = await format_message(context, "post_gen_episode_caption")
-            caption = caption_template.format(anime_name=anime_name, season_name=season_name, ep_num=ep_num)
+            caption = _safe_caption_format(caption_template, anime_name=anime_name, series_name=anime_name, season_name=season_name, ep_num=ep_num)
             poster_id = None 
         
         else:
@@ -4207,7 +4226,7 @@ async def bot_messages_menu_dl(update: Update, context: ContextTypes.DEFAULT_TYP
     keyboard = [
         [InlineKeyboardButton("Edit Check DM Alert", callback_data="msg_edit_user_dl_dm_alert")],
         [InlineKeyboardButton("Edit Fetching Files", callback_data="msg_edit_user_dl_fetching")],
-        [InlineKeyboardButton("Edit Anime Not Found", callback_data="msg_edit_user_dl_anime_not_found")],
+        [InlineKeyboardButton("Edit Content Not Found", callback_data="msg_edit_user_dl_anime_not_found")],
         [InlineKeyboardButton("Edit Seasons Not Found", callback_data="msg_edit_user_dl_seasons_not_found")],
         [InlineKeyboardButton("Edit Episodes Not Found", callback_data="msg_edit_user_dl_episodes_not_found")],
         [InlineKeyboardButton("Edit Sending Files", callback_data="msg_edit_user_dl_sending_files")],
@@ -4244,7 +4263,7 @@ async def bot_messages_menu_postgen(update: Update, context: ContextTypes.DEFAUL
     query = update.callback_query
     await query.answer()
     keyboard = [
-        [InlineKeyboardButton("Edit Anime Post Caption", callback_data="msg_edit_post_gen_anime_caption")], 
+        [InlineKeyboardButton("Edit Series/Movie Post Caption", callback_data="msg_edit_post_gen_anime_caption")], 
         [InlineKeyboardButton("Edit Season Post Caption", callback_data="msg_edit_post_gen_season_caption")],
         [InlineKeyboardButton("Edit Episode Post Caption", callback_data="msg_edit_post_gen_episode_caption")],
         [InlineKeyboardButton("⬅️ Back", callback_data="admin_menu_messages")]
