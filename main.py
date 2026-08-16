@@ -859,6 +859,7 @@ async def _update_anime_timestamp(anime_name: str):
 
 # NAYA: Default Publish Chat
 (DPC_GET_CHAT,) = range(104, 105)
+(PROMO_GET_VALUE,) = range(105, 106)
 
 
 # --- NAYA: Global Cancel Function ---
@@ -4374,11 +4375,14 @@ async def admin_settings_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     config = await get_config()
     default_chat = config.get("default_publish_chat") or "Not Set"
+    promo1 = config.get("promo_channel_1") or "Not Set"
+    promo2 = config.get("promo_channel_2") or "Not Set"
     keyboard = [
         [InlineKeyboardButton("➕ Add Co-Admin", callback_data="admin_add_co_admin")],
         [InlineKeyboardButton("🚫 Remove Co-Admin", callback_data="admin_remove_co_admin")],
         [InlineKeyboardButton("👥 List Co-Admins", callback_data="admin_list_co_admin")],
         [InlineKeyboardButton(f"📍 Default Publish Chat: {default_chat}", callback_data="admin_set_default_chat")],
+        [InlineKeyboardButton("📢 Promo Channels (Thank You)", callback_data="admin_promo_channels")],
         [InlineKeyboardButton("🚀 Custom Post Generator", callback_data="admin_custom_post")],
         [InlineKeyboardButton("📢 Broadcast Message", callback_data="admin_broadcast_start")],
         [InlineKeyboardButton("⬅️ Back to Admin Menu", callback_data="admin_menu")]
@@ -4439,6 +4443,98 @@ async def set_default_chat_clear(update: Update, context: ContextTypes.DEFAULT_T
         await update.message.reply_text(f"❌ Error: {e}", parse_mode=ParseMode.HTML)
     context.user_data.clear()
     return ConversationHandler.END
+
+
+# ============================================
+# ===     PROMO CHANNELS + THANK YOU       ===
+# ============================================
+async def promo_channels_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    config = await get_config()
+    p1 = config.get("promo_channel_1") or "Not Set"
+    p2 = config.get("promo_channel_2") or "Not Set"
+    thank_msg = config.get("promo_thank_you_msg") or "🙏 Thank you for your time and consideration!"
+    text = (
+        f"📢 <b>Promo Channels (After Download)</b>\n\n"
+        f"Download complete hone ke baad user ko Thank You message + 2 Join buttons milenge.\n\n"
+        f"<b>Channel 1:</b> <code>{p1}</code>\n"
+        f"<b>Channel 2:</b> <code>{p2}</code>\n"
+        f"<b>Message:</b> {thank_msg}\n\n"
+        f"Links set karo for promotion."
+    )
+    keyboard = [
+        [InlineKeyboardButton("🔗 Set Channel 1 Link", callback_data="promo_set_1")],
+        [InlineKeyboardButton("🔗 Set Channel 2 Link", callback_data="promo_set_2")],
+        [InlineKeyboardButton("✏️ Edit Thank You Message", callback_data="promo_set_msg")],
+        [InlineKeyboardButton("⬅️ Back", callback_data="admin_menu_admin_settings")]
+    ]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+
+async def promo_set_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+    if data == "promo_set_1":
+        context.user_data['promo_setting'] = "promo_channel_1"
+        text = "🔗 <b>Channel 1</b> ka link bhejo:\n(Example: https://t.me/mychannel)\n\n/skip - Clear\n/cancel - Cancel"
+    elif data == "promo_set_2":
+        context.user_data['promo_setting'] = "promo_channel_2"
+        text = "🔗 <b>Channel 2</b> ka link bhejo:\n(Example: https://t.me/mychannel2)\n\n/skip - Clear\n/cancel - Cancel"
+    else:
+        context.user_data['promo_setting'] = "promo_thank_you_msg"
+        text = "✏️ Thank You message bhejo:\n\n/cancel - Cancel"
+    await query.edit_message_text(text, parse_mode=ParseMode.HTML)
+    return 105  # PROMO_GET_VALUE state
+
+async def promo_set_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    key = context.user_data.get('promo_setting')
+    value = update.message.text.strip()
+    if not key:
+        await update.message.reply_text("Error. /cancel and try again.")
+        return ConversationHandler.END
+    try:
+        config_collection.update_one(
+            {"_id": "bot_config"},
+            {"$set": {key: value}},
+            upsert=True
+        )
+        await update.message.reply_text(f"✅ Saved!\n<code>{key}</code> = <code>{value}</code>", parse_mode=ParseMode.HTML)
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {e}")
+    context.user_data.clear()
+    return ConversationHandler.END
+
+async def promo_set_clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    key = context.user_data.get('promo_setting')
+    if key and key != "promo_thank_you_msg":
+        config_collection.update_one({"_id": "bot_config"}, {"$unset": {key: ""}})
+        await update.message.reply_text(f"✅ {key} cleared.")
+    context.user_data.clear()
+    return ConversationHandler.END
+
+async def send_promo_thank_you(bot, user_id: int):
+    """Download ke baad thank you + join channel buttons"""
+    try:
+        config = config_collection.find_one({"_id": "bot_config"}) or {}
+        msg = config.get("promo_thank_you_msg") or "🙏 <b>Thank you for your time and consideration!</b>"
+        p1 = config.get("promo_channel_1")
+        p2 = config.get("promo_channel_2")
+        
+        keyboard = []
+        row = []
+        if p1:
+            row.append(InlineKeyboardButton("📢 Join Channel", url=p1))
+        if p2:
+            row.append(InlineKeyboardButton("📢 Join Channel 2", url=p2))
+        if row:
+            keyboard.append(row)
+        
+        reply_markup = InlineKeyboardMarkup(keyboard) if keyboard else None
+        await bot.send_message(chat_id=user_id, text=msg, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+    except Exception as e:
+        logger.error(f"Promo thank you send failed: {e}")
+
 
 # NAYA (v32): Update Photo Sub-Menu
 async def update_photo_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -4994,6 +5090,8 @@ async def download_button_handler(update: Update, context: ContextTypes.DEFAULT_
                 except Exception as e:
                     logger.error(f"Async 'Sending files...' message delete schedule failed: {e}")
             
+            # Thank you + promo channels
+            await send_promo_thank_you(context.bot, user_id)
             return 
             
         sent_selection_message = None 
@@ -5158,6 +5256,9 @@ async def download_button_handler(update: Update, context: ContextTypes.DEFAULT_
                         seconds=delete_time
                     ))
                 except: pass
+            
+            # Thank you + promo channels
+            await send_promo_thank_you(context.bot, user_id)
             return
         
         # === SERIES: Season list ===
@@ -5724,6 +5825,21 @@ def main():
         allow_reentry=True
     )
     
+    # NAYA: Promo Channels Conversation
+    promo_conv = ConversationHandler(
+        entry_points=[
+            CallbackQueryHandler(promo_set_start, pattern="^promo_set_1$|^promo_set_2$|^promo_set_msg$")
+        ],
+        states={
+            PROMO_GET_VALUE: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, promo_set_save),
+                CommandHandler("skip", promo_set_clear)
+            ]
+        },
+        fallbacks=global_fallbacks + admin_menu_fallback,
+        allow_reentry=True
+    )
+    
     # NAYA (v32): Set Menu Photo Conv (Updated Entry Point)
     set_menu_photo_conv = ConversationHandler(
        entry_points=[CallbackQueryHandler(set_menu_photo_start, pattern="^admin_set_menu_photo$")],
@@ -5782,6 +5898,8 @@ def main():
     bot_app.add_handler(appearance_conv)
     bot_app.add_handler(set_menu_photo_conv) # NAYA: Updated handler
     bot_app.add_handler(set_default_chat_conv)  # NAYA: Default Publish Chat
+    bot_app.add_handler(promo_conv)  # NAYA: Promo channels
+    bot_app.add_handler(CallbackQueryHandler(promo_channels_menu, pattern="^admin_promo_channels$"))
     bot_app.add_handler(merge_anime_conv) # NAYA: New feature (v33)
 
     # Standard commands
