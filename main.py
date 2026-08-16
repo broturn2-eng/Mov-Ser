@@ -925,6 +925,7 @@ async def _update_anime_timestamp(anime_name: str):
 # NAYA: Default Publish Chat
 (DPC_GET_CHAT,) = range(104, 105)
 (PROMO_GET_VALUE,) = range(105, 106)
+(VERIFY_VIDEO,) = range(106, 107)
 
 
 # --- NAYA: Global Cancel Function ---
@@ -2732,9 +2733,13 @@ async def set_links_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['link_type'] = "download"
         text = await format_message(context, "admin_set_link_download")
         back_button = "back_to_links"
-    elif link_type == "help_link": # NAYA
+    elif link_type == "help_link":
         context.user_data['link_type'] = "help"
         text = await format_message(context, "admin_set_link_help")
+        back_button = "back_to_links"
+    elif link_type == "verify_link":
+        context.user_data['link_type'] = "verify"
+        text = "✅ <b>Verify / How-to-Download Link</b> bhejo:\n(Video link, channel post, ya tutorial URL)\n\n/skip - Clear\n/cancel - Cancel"
         back_button = "back_to_links"
     else:
         text = await format_message(context, "admin_set_link_invalid")
@@ -2805,15 +2810,25 @@ async def set_msg_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = await format_message(context, "admin_set_msg_success", {"msg_key": msg_key})
         await update.message.reply_text(text, parse_mode=ParseMode.HTML)
         
-        await bot_messages_menu(update, context) 
-        context.user_data.clear()
-        return ConversationHandler.END
+        # Clear only msg_key, stay in messages flow
+        context.user_data.pop('msg_key', None)
+        await update.message.reply_text("⬅️ Messages menu:", parse_mode=ParseMode.HTML)
+        # Show main messages menu again
+        keyboard = [
+            [InlineKeyboardButton("📥 Download Flow Messages", callback_data="msg_menu_dl")],
+            [InlineKeyboardButton("✍️ Post Generator Messages", callback_data="msg_menu_postgen")],
+            [InlineKeyboardButton("👑 Admin Flow Messages", callback_data="msg_menu_admin")],
+            [InlineKeyboardButton("⚙️ General Messages", callback_data="msg_menu_gen")],
+            [InlineKeyboardButton("⬅️ Back to Admin Menu", callback_data="admin_menu")]
+        ]
+        text = await format_message(context, "admin_menu_messages_main")
+        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+        return M_MENU_MAIN
     except Exception as e:
         logger.error(f"Message save karne me error: {e}")
         text = await format_message(context, "admin_set_msg_error")
         await update.message.reply_text(text, parse_mode=ParseMode.HTML)
-        context.user_data.clear()
-        return ConversationHandler.END
+        return M_MENU_MAIN
     
 # --- Conversation: Post Generator ---
 async def post_gen_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3051,12 +3066,20 @@ async def generate_post_ask_chat(update: Update, context: ContextTypes.DEFAULT_T
         btn_backup = InlineKeyboardButton("Backup", url=backup_url)
         btn_donate = InlineKeyboardButton("Donate", url=donate_url)
         btn_help = InlineKeyboardButton("🆘 Help", url=help_url)
+        
+        # Verify / How to download button
+        verify_url = links.get('verify') or config.get('verify_url')
+        if verify_url:
+            btn_verify = InlineKeyboardButton("✅ Verify", url=verify_url)
+        else:
+            btn_verify = InlineKeyboardButton("✅ Verify", callback_data="user_verify_howto")
 
         context.user_data['post_caption_raw'] = caption
         context.user_data['post_poster_id'] = poster_id 
         context.user_data['btn_backup'] = btn_backup
         context.user_data['btn_donate'] = btn_donate
         context.user_data['btn_help'] = btn_help
+        context.user_data['btn_verify'] = btn_verify
         context.user_data['is_episode_post'] = context.user_data.get('is_episode_post', False) 
         
         text = await format_message(context, "admin_post_gen_ask_shortlink", {
@@ -3096,18 +3119,28 @@ async def post_gen_get_short_link(update: Update, context: ContextTypes.DEFAULT_
     btn_backup = context.user_data['btn_backup']
     btn_donate = context.user_data['btn_donate']
     btn_help = context.user_data['btn_help']
+    btn_verify = context.user_data.get('btn_verify')
     is_episode_post = context.user_data.get('is_episode_post', False)
     
-    btn_download = InlineKeyboardButton("Download", url=short_link_url)
+    # 1 bada Download (full row) + 1 chota Verify
+    btn_download = InlineKeyboardButton("⬇️ DOWNLOAD", url=short_link_url)
+    if not btn_verify:
+        btn_verify = InlineKeyboardButton("✅ Verify", callback_data="user_verify_howto")
+    else:
+        if getattr(btn_verify, 'url', None):
+            btn_verify = InlineKeyboardButton("✅ Verify", url=btn_verify.url)
+        else:
+            btn_verify = InlineKeyboardButton("✅ Verify", callback_data="user_verify_howto")
     
     if is_episode_post:
         keyboard = [
-            [btn_donate, btn_download],
+            [btn_download],              # BARA full width
+            [btn_verify, btn_donate],
         ]
     else:
         keyboard = [
-            [btn_backup, btn_donate],
-            [btn_download]            
+            [btn_backup, btn_verify, btn_donate],  # Verify beech mein
+            [btn_download],                        # BARA full width
         ]
     
     context.user_data['post_keyboard'] = InlineKeyboardMarkup(keyboard)
@@ -4338,17 +4371,82 @@ async def donate_settings_menu(update: Update, context: ContextTypes.DEFAULT_TYP
     else: 
         await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
 
+
+async def user_verify_howto(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Verify button - how to download video/link bhejo"""
+    query = update.callback_query
+    await query.answer()
+    config = await get_config()
+    verify_url = config.get('links', {}).get('verify')
+    video_id = config.get('verify_video_id')
+    
+    if video_id:
+        try:
+            await context.bot.send_video(
+                chat_id=query.from_user.id,
+                video=video_id,
+                caption="✅ <b>How to Download / Verify</b>\n\nIs video ko dekho aur steps follow karo.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+        except Exception as e:
+            logger.error(f"Verify video send failed: {e}")
+    
+    if verify_url:
+        await context.bot.send_message(
+            chat_id=query.from_user.id,
+            text=f"✅ <b>How to Download / Verify</b>\n\n👉 {verify_url}",
+            parse_mode=ParseMode.HTML
+        )
+    else:
+        await query.answer("Verify guide abhi set nahi hai. Admin se contact karo.", show_alert=True)
+
+async def set_verify_video_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_text(
+        "🎬 <b>Verify How-To Video</b>\n\nAb mujhe <b>video</b> bhejo (m4 / mp4) jo users ko 'How to Download' dikhega.\\n\\n/skip - Clear\\n/cancel - Cancel",
+        parse_mode=ParseMode.HTML
+    )
+    return VERIFY_VIDEO
+
+async def set_verify_video_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message.video and not update.message.document:
+        await update.message.reply_text("Please video bhejo.")
+        return VERIFY_VIDEO
+    file_id = None
+    if update.message.video:
+        file_id = update.message.video.file_id
+    elif update.message.document:
+        file_id = update.message.document.file_id
+    config_collection.update_one(
+        {"_id": "bot_config"},
+        {"$set": {"verify_video_id": file_id}},
+        upsert=True
+    )
+    await update.message.reply_text("✅ Verify how-to video save ho gaya!")
+    return ConversationHandler.END
+
+async def set_verify_video_clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    config_collection.update_one({"_id": "bot_config"}, {"$unset": {"verify_video_id": ""}})
+    await update.message.reply_text("✅ Verify video cleared.")
+    return ConversationHandler.END
+
+
 async def other_links_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     if query: await query.answer()
     config = await get_config()
     backup_status = "✅" if config.get('links', {}).get('backup') else "❌"
     download_status = "✅" if config.get('links', {}).get('download') else "❌"
-    help_status = "✅" if config.get('links', {}).get('help') else "❌" # NAYA
+    help_status = "✅" if config.get('links', {}).get('help') else "❌"
+    verify_status = "✅" if config.get('links', {}).get('verify') or config.get('verify_video_id') else "❌"
     keyboard = [
         [InlineKeyboardButton(f"Set Backup Link {backup_status}", callback_data="admin_set_backup_link")],
         [InlineKeyboardButton(f"Set Download Link {download_status}", callback_data="admin_set_download_link")], 
-        [InlineKeyboardButton(f"Set Help Link {help_status}", callback_data="admin_set_help_link")], # NAYA
+        [InlineKeyboardButton(f"Set Help Link {help_status}", callback_data="admin_set_help_link")],
+        [InlineKeyboardButton(f"✅ Set Verify Link {verify_status}", callback_data="admin_set_verify_link")],
+        [InlineKeyboardButton("🎬 Set Verify How-To Video", callback_data="admin_set_verify_video")],
         [InlineKeyboardButton("⬅️ Back to Admin Menu", callback_data="admin_menu")]
     ]
     text = await format_message(context, "admin_menu_links")
@@ -4588,9 +4686,13 @@ async def promo_channels_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
         f"<b>Message:</b> {thank_msg}\n\n"
         f"Links set karo for promotion."
     )
+    b1 = config.get("promo_btn1_text") or "Join Channel"
+    b2 = config.get("promo_btn2_text") or "Join Channel 2"
     keyboard = [
         [InlineKeyboardButton("🔗 Set Channel 1 Link", callback_data="promo_set_1")],
         [InlineKeyboardButton("🔗 Set Channel 2 Link", callback_data="promo_set_2")],
+        [InlineKeyboardButton(f"✏️ Button 1 Text: {b1[:20]}", callback_data="promo_set_btn1")],
+        [InlineKeyboardButton(f"✏️ Button 2 Text: {b2[:20]}", callback_data="promo_set_btn2")],
         [InlineKeyboardButton("✏️ Edit Thank You Message", callback_data="promo_set_msg")],
         [InlineKeyboardButton("⬅️ Back", callback_data="admin_menu_admin_settings")]
     ]
@@ -4606,6 +4708,12 @@ async def promo_set_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "promo_set_2":
         context.user_data['promo_setting'] = "promo_channel_2"
         text = "🔗 <b>Channel 2</b> ka link bhejo:\n(Example: https://t.me/mychannel2)\n\n/skip - Clear\n/cancel - Cancel"
+    elif data == "promo_set_btn1":
+        context.user_data['promo_setting'] = "promo_btn1_text"
+        text = "✏️ <b>Button 1</b> ka text bhejo:\n(Example: Join My Channel / Subscribe Now)\n\n/cancel - Cancel"
+    elif data == "promo_set_btn2":
+        context.user_data['promo_setting'] = "promo_btn2_text"
+        text = "✏️ <b>Button 2</b> ka text bhejo:\n(Example: Join Channel 2 / More Content)\n\n/cancel - Cancel"
     else:
         context.user_data['promo_setting'] = "promo_thank_you_msg"
         text = "✏️ Thank You message bhejo:\n\n/cancel - Cancel"
@@ -4645,13 +4753,15 @@ async def send_promo_thank_you(bot, user_id: int):
         msg = config.get("promo_thank_you_msg") or "🙏 <b>Thank you for your time and consideration!</b>"
         p1 = config.get("promo_channel_1")
         p2 = config.get("promo_channel_2")
+        btn1_text = config.get("promo_btn1_text") or "📢 Join Channel"
+        btn2_text = config.get("promo_btn2_text") or "📢 Join Channel 2"
         
         keyboard = []
         row = []
         if p1:
-            row.append(InlineKeyboardButton("📢 Join Channel", url=p1))
+            row.append(InlineKeyboardButton(btn1_text, url=p1))
         if p2:
-            row.append(InlineKeyboardButton("📢 Join Channel 2", url=p2))
+            row.append(InlineKeyboardButton(btn2_text, url=p2))
         if row:
             keyboard.append(row)
         
@@ -5664,7 +5774,7 @@ def main():
         allow_reentry=True 
     )
     set_links_conv = ConversationHandler(
-        entry_points=[CallbackQueryHandler(set_links_start, pattern="^admin_set_backup_link$|^admin_set_download_link$|^admin_set_help_link$")], # NAYA
+        entry_points=[CallbackQueryHandler(set_links_start, pattern="^admin_set_backup_link$|^admin_set_download_link$|^admin_set_help_link$|^admin_set_verify_link$")], # NAYA
         states={CL_GET_LINK: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_link), CommandHandler("skip", skip_link)]}, 
         fallbacks=global_fallbacks + links_fallback,
         allow_reentry=True 
@@ -5901,7 +6011,14 @@ def main():
         allow_reentry=True 
     )
     set_messages_conv = ConversationHandler(
-        entry_points=[CallbackQueryHandler(bot_messages_menu, pattern="^admin_menu_messages$")],
+        entry_points=[
+            CallbackQueryHandler(bot_messages_menu, pattern="^admin_menu_messages$"),
+            CallbackQueryHandler(bot_messages_menu_dl, pattern="^msg_menu_dl$"),
+            CallbackQueryHandler(bot_messages_menu_postgen, pattern="^msg_menu_postgen$"),
+            CallbackQueryHandler(bot_messages_menu_gen, pattern="^msg_menu_gen$"),
+            CallbackQueryHandler(bot_messages_menu_admin, pattern="^msg_menu_admin$"),
+            CallbackQueryHandler(set_msg_start, pattern="^msg_edit_"),
+        ],
         states={
             M_MENU_MAIN: [
                 CallbackQueryHandler(bot_messages_menu_dl, pattern="^msg_menu_dl$"),
@@ -5909,13 +6026,35 @@ def main():
                 CallbackQueryHandler(bot_messages_menu_gen, pattern="^msg_menu_gen$"),
                 CallbackQueryHandler(bot_messages_menu_admin, pattern="^msg_menu_admin$"),
             ],
-            M_MENU_DL: [CallbackQueryHandler(set_msg_start, pattern="^msg_edit_")],
-            M_MENU_POSTGEN: [CallbackQueryHandler(set_msg_start, pattern="^msg_edit_")],
-            M_MENU_GEN: [CallbackQueryHandler(set_msg_start, pattern="^msg_edit_")],
-            M_MENU_ADMIN: [CallbackQueryHandler(set_msg_start, pattern="^msg_edit_")],
-            M_GET_MSG: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_msg_save)],
+            M_MENU_DL: [
+                CallbackQueryHandler(set_msg_start, pattern="^msg_edit_"),
+                CallbackQueryHandler(bot_messages_menu, pattern="^admin_menu_messages$"),
+                CallbackQueryHandler(bot_messages_menu_dl, pattern="^msg_menu_dl$"),
+            ],
+            M_MENU_POSTGEN: [
+                CallbackQueryHandler(set_msg_start, pattern="^msg_edit_"),
+                CallbackQueryHandler(bot_messages_menu, pattern="^admin_menu_messages$"),
+            ],
+            M_MENU_GEN: [
+                CallbackQueryHandler(set_msg_start, pattern="^msg_edit_"),
+                CallbackQueryHandler(bot_messages_menu, pattern="^admin_menu_messages$"),
+            ],
+            M_MENU_ADMIN: [
+                CallbackQueryHandler(set_msg_start, pattern="^msg_edit_"),
+                CallbackQueryHandler(bot_messages_menu, pattern="^admin_menu_messages$"),
+            ],
+            M_GET_MSG: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, set_msg_save),
+                CallbackQueryHandler(bot_messages_menu, pattern="^admin_menu_messages$"),
+                CallbackQueryHandler(bot_messages_menu_dl, pattern="^msg_menu_dl$"),
+                CallbackQueryHandler(bot_messages_menu_gen, pattern="^msg_menu_gen$"),
+                CallbackQueryHandler(bot_messages_menu_admin, pattern="^msg_menu_admin$"),
+                CallbackQueryHandler(bot_messages_menu_postgen, pattern="^msg_menu_postgen$"),
+            ],
         },
-        fallbacks=global_fallbacks + admin_menu_fallback,
+        fallbacks=global_fallbacks + admin_menu_fallback + [
+            CallbackQueryHandler(bot_messages_menu, pattern="^admin_menu_messages$"),
+        ],
         allow_reentry=True
     )
     
@@ -5955,7 +6094,7 @@ def main():
     # NAYA: Promo Channels Conversation
     promo_conv = ConversationHandler(
         entry_points=[
-            CallbackQueryHandler(promo_set_start, pattern="^promo_set_1$|^promo_set_2$|^promo_set_msg$")
+            CallbackQueryHandler(promo_set_start, pattern="^promo_set_1$|^promo_set_2$|^promo_set_msg$|^promo_set_btn1$|^promo_set_btn2$")
         ],
         states={
             PROMO_GET_VALUE: [
@@ -6029,6 +6168,20 @@ def main():
     bot_app.add_handler(CallbackQueryHandler(promo_channels_menu, pattern="^admin_promo_channels$"))
     bot_app.add_handler(CallbackQueryHandler(language_menu, pattern="^admin_set_language$"))
     bot_app.add_handler(CallbackQueryHandler(language_set, pattern="^lang_"))
+    bot_app.add_handler(CallbackQueryHandler(user_verify_howto, pattern="^user_verify_howto$"))
+    
+    verify_video_conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(set_verify_video_start, pattern="^admin_set_verify_video$")],
+        states={
+            VERIFY_VIDEO: [
+                MessageHandler(filters.VIDEO | filters.Document.ALL, set_verify_video_save),
+                CommandHandler("skip", set_verify_video_clear),
+            ]
+        },
+        fallbacks=global_fallbacks + admin_menu_fallback,
+        allow_reentry=True
+    )
+    bot_app.add_handler(verify_video_conv)
     bot_app.add_handler(merge_anime_conv) # NAYA: New feature (v33)
 
     # Standard commands
