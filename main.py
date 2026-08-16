@@ -2742,6 +2742,10 @@ async def set_links_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['link_type'] = "verify"
         text = "✅ <b>Verify / How-to-Download Link</b> bhejo:\n(Video link, channel post, ya tutorial URL)\n\n/skip - Clear\n/cancel - Cancel"
         back_button = "back_to_links"
+    elif link_type == "request_link":
+        context.user_data['link_type'] = "request"
+        text = "🎬 <b>Request a Movie Link</b> bhejo:\n(Google form / channel / bot link)\n\n/skip - Clear\n/cancel - Cancel"
+        back_button = "back_to_links"
     else:
         text = await format_message(context, "admin_set_link_invalid")
         await query.answer(text, show_alert=True)
@@ -3130,36 +3134,39 @@ async def post_gen_get_short_link(update: Update, context: ContextTypes.DEFAULT_
     t_backup = config.get("btn_text_backup") or "Backup"
     t_verify = config.get("btn_text_verify") or "How to Verify"
     t_donate = config.get("btn_text_donate") or "Donate"
+    t_request = config.get("btn_text_request") or "Request a Movie"
     t_download = config.get("btn_text_download") or "⬇️ DOWNLOAD"
     
-    btn_download = InlineKeyboardButton(t_download, url=short_link_url)
-    
-    # Rebuild backup/donate with custom text
+    bot_uname = context.user_data.get('bot_username', 'bot')
     links = config.get("links", {})
-    backup_url = links.get("backup") or "https://t.me/"
-    donate_url = f"https://t.me/{context.user_data.get('bot_username', 'bot')}?start=donate"
+    
+    # All URL buttons that open bot or external links
+    backup_url = links.get("backup") or f"https://t.me/{bot_uname}"
+    donate_url = f"https://t.me/{bot_uname}?start=donate"
+    # How to Verify → always open bot with start=verify
+    verify_bot_url = f"https://t.me/{bot_uname}?start=verify"
+    # Request a Movie → admin set link, else bot
+    request_url = links.get("request") or f"https://t.me/{bot_uname}?start=request"
+    
     btn_backup = InlineKeyboardButton(t_backup, url=backup_url)
     btn_donate = InlineKeyboardButton(t_donate, url=donate_url)
-    
-    verify_url = links.get("verify") or config.get("verify_url")
-    if verify_url:
-        btn_verify = InlineKeyboardButton(t_verify, url=verify_url)
-    else:
-        btn_verify = InlineKeyboardButton(t_verify, callback_data="user_verify_howto")
+    btn_verify = InlineKeyboardButton(t_verify, url=verify_bot_url)
+    btn_request = InlineKeyboardButton(t_request, url=request_url)
+    btn_download = InlineKeyboardButton(t_download, url=short_link_url)
     
     if is_episode_post:
         keyboard = [
-            [btn_verify],
+            [btn_verify, btn_request],
             [btn_donate],
             [btn_download],
         ]
     else:
-        # Line1: Backup | How to Verify
-        # Line2: Donate
-        # Line3: Download
+        # Backup | How to Verify
+        # Donate | Request a Movie
+        # DOWNLOAD (full width)
         keyboard = [
             [btn_backup, btn_verify],
-            [btn_donate],
+            [btn_donate, btn_request],
             [btn_download],
         ]
     
@@ -4467,6 +4474,7 @@ async def other_links_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton(f"Set Help Link {help_status}", callback_data="admin_set_help_link")],
         [InlineKeyboardButton(f"✅ Set Verify Link {verify_status}", callback_data="admin_set_verify_link")],
         [InlineKeyboardButton("🎬 Set Verify How-To Video", callback_data="admin_set_verify_video")],
+        [InlineKeyboardButton("🎬 Set Request Link", callback_data="admin_set_request_link")],
         [InlineKeyboardButton("⬅️ Back to Admin Menu", callback_data="admin_menu")]
     ]
     text = await format_message(context, "admin_menu_links")
@@ -4672,28 +4680,31 @@ async def post_buttons_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     t_backup = config.get("btn_text_backup") or "Backup"
     t_verify = config.get("btn_text_verify") or "How to Verify"
     t_donate = config.get("btn_text_donate") or "Donate"
+    t_request = config.get("btn_text_request") or "Request a Movie"
     t_download = config.get("btn_text_download") or "⬇️ DOWNLOAD"
     verify_link = config.get("links", {}).get("verify") or "Not Set"
+    request_link = config.get("links", {}).get("request") or "Not Set"
     has_video = "✅" if config.get("verify_video_id") else "❌"
     
     text = (
         f"🔘 <b>Post Buttons</b>\n\n"
         f"Layout:\n"
         f"<code>[ {t_backup} ] [ {t_verify} ]</code>\n"
-        f"<code>[ {t_donate} ]</code>\n"
+        f"<code>[ {t_donate} ] [ {t_request} ]</code>\n"
         f"<code>[ {t_download} ]</code>\n\n"
-        f"<b>How to Verify:</b>\n"
-        f"Link: <code>{verify_link}</code>\n"
-        f"Video: {has_video}\n\n"
-        f"Button text ya verify guide set karo."
+        f"<b>How to Verify:</b> Video {has_video} | Link: <code>{verify_link}</code>\n"
+        f"<b>Request Link:</b> <code>{request_link}</code>\n\n"
+        f"Button text / links / video set karo."
     )
     keyboard = [
         [InlineKeyboardButton(f"✏️ Backup: {t_backup[:15]}", callback_data="pbtn_backup")],
         [InlineKeyboardButton(f"✏️ How to Verify: {t_verify[:15]}", callback_data="pbtn_verify")],
         [InlineKeyboardButton(f"✏️ Donate: {t_donate[:15]}", callback_data="pbtn_donate")],
+        [InlineKeyboardButton(f"✏️ Request: {t_request[:15]}", callback_data="pbtn_request")],
         [InlineKeyboardButton(f"✏️ Download: {t_download[:15]}", callback_data="pbtn_download")],
         [InlineKeyboardButton("🔗 Set Verify Link", callback_data="admin_set_verify_link")],
         [InlineKeyboardButton("🎬 Set Verify How-To Video", callback_data="admin_set_verify_video")],
+        [InlineKeyboardButton("🎬 Set Request Link", callback_data="admin_set_request_link")],
         [InlineKeyboardButton("⬅️ Back", callback_data="admin_menu_admin_settings")]
     ]
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
@@ -4706,6 +4717,7 @@ async def post_btn_text_start(update: Update, context: ContextTypes.DEFAULT_TYPE
         "pbtn_backup": ("btn_text_backup", "Backup"),
         "pbtn_verify": ("btn_text_verify", "How to Verify"),
         "pbtn_donate": ("btn_text_donate", "Donate"),
+        "pbtn_request": ("btn_text_request", "Request a Movie"),
         "pbtn_download": ("btn_text_download", "Download"),
     }
     conf_key, label = key_map.get(data, (None, None))
@@ -4946,6 +4958,62 @@ async def handle_deep_link_donate(user: User, context: ContextTypes.DEFAULT_TYPE
         if "blocked" in str(e):
             logger.warning(f"User {user.id} ne bot ko block kiya hua hai.")
 
+
+async def handle_deep_link_verify(user: User, context: ContextTypes.DEFAULT_TYPE):
+    """How to Verify - video / link / not set message"""
+    logger.info(f"User {user.id} opened How to Verify")
+    config = await get_config()
+    video_id = config.get("verify_video_id")
+    verify_url = config.get("links", {}).get("verify")
+    
+    if video_id:
+        try:
+            await context.bot.send_video(
+                chat_id=user.id,
+                video=video_id,
+                caption="✅ <b>How to Verify / Download</b>\n\nWatch this video and follow the steps.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+        except Exception as e:
+            logger.error(f"Verify video send failed: {e}")
+    
+    if verify_url:
+        await context.bot.send_message(
+            chat_id=user.id,
+            text=f"✅ <b>How to Verify / Download</b>\n\n👉 <a href=\"{verify_url}\">Open Guide</a>",
+            parse_mode=ParseMode.HTML,
+            disable_web_page_preview=False
+        )
+        return
+    
+    # Nothing set
+    await context.bot.send_message(
+        chat_id=user.id,
+        text="⚠️ <b>Admin has not set any verification file.</b>\n\nPlease contact admin or try again later.",
+        parse_mode=ParseMode.HTML,
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("📩 Request a Movie", url=config.get("links", {}).get("request") or f"https://t.me/{(await context.bot.get_me()).username}")]
+        ]) if config.get("links", {}).get("request") else None
+    )
+
+async def handle_deep_link_request(user: User, context: ContextTypes.DEFAULT_TYPE):
+    """Request a Movie - redirect info if no external link was used"""
+    config = await get_config()
+    request_url = config.get("links", {}).get("request")
+    if request_url:
+        await context.bot.send_message(
+            chat_id=user.id,
+            text=f"🎬 <b>Request a Movie</b>\n\n👉 <a href=\"{request_url}\">Open Request Form</a>",
+            parse_mode=ParseMode.HTML
+        )
+    else:
+        await context.bot.send_message(
+            chat_id=user.id,
+            text="⚠️ <b>Admin has not set any request link.</b>\n\nPlease contact admin.",
+            parse_mode=ParseMode.HTML
+        )
+
 async def handle_deep_link_download(user: User, context: ContextTypes.DEFAULT_TYPE, payload: str):
     """Deep link se /start=dl... ko handle karega"""
     logger.info(f"User {user.id} ne Download deep link use kiya: {payload}")
@@ -5022,6 +5090,14 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
         elif payload == "donate":
             await handle_deep_link_donate(user, context)
+            return
+        
+        elif payload == "verify":
+            await handle_deep_link_verify(user, context)
+            return
+        
+        elif payload == "request":
+            await handle_deep_link_request(user, context)
             return
     
     logger.info("Koi deep link nahi. Sirf welcome message bhej raha hoon.")
@@ -5863,7 +5939,7 @@ def main():
         allow_reentry=True 
     )
     set_links_conv = ConversationHandler(
-        entry_points=[CallbackQueryHandler(set_links_start, pattern="^admin_set_backup_link$|^admin_set_download_link$|^admin_set_help_link$|^admin_set_verify_link$")], # NAYA
+        entry_points=[CallbackQueryHandler(set_links_start, pattern="^admin_set_backup_link$|^admin_set_download_link$|^admin_set_help_link$|^admin_set_verify_link$|^admin_set_request_link$")], # NAYA
         states={CL_GET_LINK: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_link), CommandHandler("skip", skip_link)]}, 
         fallbacks=global_fallbacks + links_fallback,
         allow_reentry=True 
