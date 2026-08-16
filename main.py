@@ -656,6 +656,25 @@ async def get_config():
         if key not in config["messages"]:
             config["messages"][key] = value
             needs_update = True
+        else:
+            # Force update agar purana message abhi bhi "Anime" bol raha hai (Series/Movie ke context mein)
+            old_msg = config["messages"].get(key, "")
+            if isinstance(old_msg, str) and ("Anime" in old_msg or "anime" in old_msg):
+                # Sirf un keys ko update karo jo content type se related hain
+                force_keys = [
+                    "admin_post_gen_select_anime", "admin_post_gen_no_anime",
+                    "admin_gen_link_select_anime", "admin_gen_link_no_anime",
+                    "admin_del_anime_select", "admin_del_anime_no_anime", "admin_del_anime_success", "admin_del_anime_error",
+                    "admin_del_ep_select_anime", "admin_add_ep_select_anime",
+                    "admin_edit_anime_select", "admin_update_photo_select_anime",
+                    "admin_add_season_select_anime", "admin_add_season_no_anime",
+                    "admin_add_anime_start", "admin_add_anime_get_name", "admin_add_anime_save_exists",
+                    "user_dl_anime_not_found", "admin_menu_add_content",
+                    "post_gen_anime_caption", "post_gen_season_caption", "post_gen_episode_caption",
+                ]
+                if key in force_keys:
+                    config["messages"][key] = value
+                    needs_update = True
     
     # Purane messages remove karo
     messages_to_remove = [
@@ -3010,9 +3029,25 @@ async def post_gen_get_short_link(update: Update, context: ContextTypes.DEFAULT_
     font_settings = {"font": "default", "style": "normal"}
     caption_formatted = await apply_font_formatting(caption_raw, font_settings)
     context.user_data['post_caption_formatted'] = caption_formatted
-    context.user_data['post_caption_raw'] = caption_raw  # keep for edit
+    context.user_data['post_caption_raw'] = caption_raw
     
-    # === PREVIEW instead of asking chat every time ===
+    # Structured parts for clean edit (title / body / quote alag)
+    import re as _re
+    # Extract first bold as title
+    title_match = _re.search(r'<b>([^<]+)</b>', caption_formatted)
+    if title_match:
+        context.user_data['post_edit_title'] = title_match.group(1).strip()
+        # Body = everything after first bold title block
+        body = caption_formatted[title_match.end():].strip()
+        # Remove leading newlines
+        body = body.lstrip('\n')
+        context.user_data['post_edit_body'] = body
+    else:
+        context.user_data['post_edit_title'] = context.user_data.get('anime_name', '')
+        context.user_data['post_edit_body'] = caption_formatted
+    context.user_data['post_is_quoted'] = False
+    
+    # === PREVIEW ===
     config = await get_config()
     default_chat = config.get("default_publish_chat")
     
@@ -3147,22 +3182,41 @@ def _get_preview_keyboard():
         [InlineKeyboardButton("❌ Cancel", callback_data="post_preview_cancel")]
     ]
 
+async def _rebuild_post_caption(context):
+    """Title + body + quote se caption rebuild karta hai (merge nahi hota)"""
+    title = context.user_data.get('post_edit_title', '')
+    body = context.user_data.get('post_edit_body', '')
+    is_quoted = context.user_data.get('post_is_quoted', False)
+    
+    if title and body:
+        caption = f"<b>{title}</b>\n\n{body}"
+    elif title:
+        caption = f"<b>{title}</b>"
+    else:
+        caption = body or context.user_data.get('post_caption_formatted', '')
+    
+    if is_quoted and caption:
+        # Sirf content quote mein, header nahi
+        caption = f"<blockquote>{caption}</blockquote>"
+    
+    context.user_data['post_caption_formatted'] = caption
+    return caption
+
 async def post_preview_quote(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    caption = context.user_data.get('post_caption_formatted', '')
     
-    # Clean any previous quote tags
-    has_quote = "<blockquote" in caption
-    caption = caption.replace("<blockquote expandable>", "").replace("<blockquote>", "").replace("</blockquote>", "")
+    # Toggle quote flag
+    is_quoted = context.user_data.get('post_is_quoted', False)
+    context.user_data['post_is_quoted'] = not is_quoted
     
-    if has_quote:
-        await query.answer("Quote removed", show_alert=False)
+    caption = await _rebuild_post_caption(context)
+    
+    if context.user_data['post_is_quoted']:
+        await query.answer("Quote ON", show_alert=False)
     else:
-        caption = f"<blockquote>{caption}</blockquote>"
-        await query.answer("Quote added", show_alert=False)
+        await query.answer("Quote OFF", show_alert=False)
     
-    context.user_data['post_caption_formatted'] = caption
     await _safe_edit_preview(query, "👁️ <b>POST PREVIEW</b>\n\n" + caption, InlineKeyboardMarkup(_get_preview_keyboard()))
     return PG_PREVIEW
 
@@ -3189,31 +3243,21 @@ async def post_preview_back(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def post_edit_title_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    await _safe_edit_preview(query, "✏️ Naya <b>Title</b> bhejo (sirf is post ke liye temporary):\n\n/cancel to cancel")
+    current = context.user_data.get('post_edit_title', '')
+    msg = "✏️ Naya <b>Title</b> bhejo (sirf is post ke liye):\n\n"
+    if current:
+        msg += f"Current: <code>{current}</code>\n\n"
+    msg += "/cancel to cancel"
+    await _safe_edit_preview(query, msg)
     return PG_EDIT_TITLE
 
 async def post_edit_title_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     new_title = update.message.text.strip()
-    old_caption = context.user_data.get('post_caption_formatted', '')
-    
-    # Remove quote tags temporarily for editing
-    was_quoted = "<blockquote" in old_caption
-    old_caption = old_caption.replace("<blockquote expandable>", "").replace("<blockquote>", "").replace("</blockquote>", "")
-    
-    # Replace first <b>...</b> which is usually the title, otherwise prepend
-    import re as _re
-    if _re.search(r'<b>[^<]+</b>', old_caption):
-        old_caption = _re.sub(r'<b>[^<]+</b>', f'<b>{new_title}</b>', old_caption, count=1)
-    else:
-        old_caption = f"<b>{new_title}</b>\n\n{old_caption}"
-    
-    if was_quoted:
-        old_caption = f"<blockquote>{old_caption}</blockquote>"
-    
-    context.user_data['post_caption_formatted'] = old_caption
-    await update.message.reply_text("✅ Title updated (temporary).", parse_mode=ParseMode.HTML)
+    context.user_data['post_edit_title'] = new_title
+    caption = await _rebuild_post_caption(context)
+    await update.message.reply_text("✅ Title updated.", parse_mode=ParseMode.HTML)
     await update.message.reply_text(
-        "👁️ <b>POST PREVIEW</b>\n\n" + old_caption,
+        "👁️ <b>POST PREVIEW</b>\n\n" + caption,
         reply_markup=InlineKeyboardMarkup(_get_preview_keyboard()),
         parse_mode=ParseMode.HTML
     )
@@ -3222,36 +3266,28 @@ async def post_edit_title_save(update: Update, context: ContextTypes.DEFAULT_TYP
 async def post_edit_desc_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    await _safe_edit_preview(query, "✏️ Naya <b>Description / Synopsis</b> bhejo (sirf is post ke liye temporary):\n\n/cancel to cancel")
+    await _safe_edit_preview(query, "✏️ Naya <b>Description / Synopsis</b> bhejo (sirf is post ke liye):\n\n/cancel to cancel")
     return PG_EDIT_DESC
 
 async def post_edit_desc_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     new_desc = update.message.text.strip()
-    old_caption = context.user_data.get('post_caption_formatted', '')
-    
-    was_quoted = "<blockquote" in old_caption
-    old_caption = old_caption.replace("<blockquote expandable>", "").replace("<blockquote>", "").replace("</blockquote>", "")
-    
-    import re as _re
-    if "Synopsis:" in old_caption:
-        # Replace everything after Synopsis: until end or double newline after
-        old_caption = _re.sub(
-            r'(Synopsis:</(?:b|f)>?\s*\n?)(.*)',
-            f'Synopsis:</b>\n{new_desc}',
-            old_caption,
-            count=1,
-            flags=_re.DOTALL
-        )
+    # Body = description + download line keep
+    old_body = context.user_data.get('post_edit_body', '')
+    # Keep the download instruction line if present
+    download_line = ""
+    for line in old_body.split('\n'):
+        if 'Download' in line or 'download' in line:
+            download_line = line
+            break
+    if download_line:
+        context.user_data['post_edit_body'] = f"<b>📖 Synopsis:</b>\n{new_desc}\n\n{download_line}"
     else:
-        old_caption = old_caption + f"\n\n<b>📖 Synopsis:</b>\n{new_desc}"
+        context.user_data['post_edit_body'] = f"<b>📖 Synopsis:</b>\n{new_desc}\n\nNeeche [Download] button dabake download karein!"
     
-    if was_quoted:
-        old_caption = f"<blockquote>{old_caption}</blockquote>"
-    
-    context.user_data['post_caption_formatted'] = old_caption
-    await update.message.reply_text("✅ Description updated (temporary).", parse_mode=ParseMode.HTML)
+    caption = await _rebuild_post_caption(context)
+    await update.message.reply_text("✅ Description updated.", parse_mode=ParseMode.HTML)
     await update.message.reply_text(
-        "👁️ <b>POST PREVIEW</b>\n\n" + old_caption,
+        "👁️ <b>POST PREVIEW</b>\n\n" + caption,
         reply_markup=InlineKeyboardMarkup(_get_preview_keyboard()),
         parse_mode=ParseMode.HTML
     )
