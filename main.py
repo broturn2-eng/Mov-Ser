@@ -2781,19 +2781,28 @@ async def post_gen_select_season(update: Update, context: ContextTypes.DEFAULT_T
     context.user_data['anime_name'] = anime_name
     anime_doc = animes_collection.find_one({"name": anime_name})
     
-    if context.user_data['post_type'] in ('post_gen_anime', 'post_gen_movie'):
+    if not anime_doc:
+        await query.edit_message_text(f"❌ '{anime_name}' nahi mila.", parse_mode=ParseMode.HTML)
+        return ConversationHandler.END
+    
+    post_type = context.user_data.get('post_type')
+    
+    # Movie ya Complete Series Post → seedha caption banao
+    if post_type in ('post_gen_anime', 'post_gen_movie'):
         context.user_data['season_name'] = None
         context.user_data['ep_num'] = None 
-        await generate_post_ask_chat(update, context) 
-        return PG_GET_SHORT_LINK 
+        return await generate_post_ask_chat(update, context)
         
-    seasons = anime_doc.get("seasons", {})
-    if not seasons:
+    seasons = anime_doc.get("seasons", {}) or {}
+    # Filter out metadata keys
+    season_keys = [s for s in seasons.keys() if not str(s).startswith("_")]
+    
+    if not season_keys:
         text = await format_message(context, "admin_post_gen_no_season", {"anime_name": anime_name})
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="admin_menu")]]), parse_mode=ParseMode.HTML)
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="admin_post_gen")]]), parse_mode=ParseMode.HTML)
         return ConversationHandler.END
         
-    sorted_seasons = sorted(seasons.keys(), key=lambda x: [int(c) if c.isdigit() else c for c in re.split(r'(\d+)', x)])
+    sorted_seasons = sorted(season_keys, key=lambda x: [int(c) if c.isdigit() else c for c in re.split(r'(\d+)', str(x))])
     buttons = [InlineKeyboardButton(f"Season {s}", callback_data=f"post_season_{s}") for s in sorted_seasons]
     keyboard = build_grid_keyboard(buttons, 1)
     
@@ -2809,27 +2818,33 @@ async def post_gen_select_episode(update: Update, context: ContextTypes.DEFAULT_
     await query.answer()
     season_name = query.data.replace("post_season_", "")
     context.user_data['season_name'] = season_name
-    anime_name = context.user_data['anime_name']
+    anime_name = context.user_data.get('anime_name')
     
-    if context.user_data['post_type'] == 'post_gen_season':
+    if not anime_name:
+        await query.edit_message_text("❌ Error: Content name missing. Start again.", parse_mode=ParseMode.HTML)
+        return ConversationHandler.END
+    
+    if context.user_data.get('post_type') == 'post_gen_season':
         context.user_data['ep_num'] = None 
-        await generate_post_ask_chat(update, context) 
-        return PG_GET_SHORT_LINK 
+        return await generate_post_ask_chat(update, context)
         
     anime_doc = animes_collection.find_one({"name": anime_name})
-    episodes = anime_doc.get("seasons", {}).get(season_name, {})
-    
-    episode_keys = [ep for ep in episodes.keys() if not ep.startswith("_")]
+    if not anime_doc:
+        await query.edit_message_text(f"❌ '{anime_name}' nahi mila.", parse_mode=ParseMode.HTML)
+        return ConversationHandler.END
+        
+    episodes = anime_doc.get("seasons", {}).get(season_name, {}) or {}
+    episode_keys = [ep for ep in episodes.keys() if not str(ep).startswith("_")]
     
     if not episode_keys:
         text = await format_message(context, "admin_post_gen_no_episode", {
             "anime_name": anime_name, 
             "season_name": season_name
         })
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="admin_menu")]]), parse_mode=ParseMode.HTML)
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="admin_post_gen")]]), parse_mode=ParseMode.HTML)
         return ConversationHandler.END
         
-    sorted_eps = sorted(episode_keys, key=lambda x: [int(c) if c.isdigit() else c for c in re.split(r'(\d+)', x)])
+    sorted_eps = sorted(episode_keys, key=lambda x: [int(c) if c.isdigit() else c for c in re.split(r'(\d+)', str(x))])
     buttons = [InlineKeyboardButton(f"Episode {ep}", callback_data=f"post_ep_{ep}") for ep in sorted_eps]
     keyboard = build_grid_keyboard(buttons, 2)
     
@@ -2844,9 +2859,7 @@ async def post_gen_final_episode(update: Update, context: ContextTypes.DEFAULT_T
     await query.answer()
     ep_num = query.data.replace("post_ep_", "")
     context.user_data['ep_num'] = ep_num
-    
-    await generate_post_ask_chat(update, context) 
-    return PG_GET_SHORT_LINK 
+    return await generate_post_ask_chat(update, context)
 
 async def generate_post_ask_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -3120,13 +3133,15 @@ async def post_preview_quote(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await query.answer()
     caption = context.user_data.get('post_caption_formatted', '')
     
-    if "<blockquote>" in caption:
-        caption = caption.replace("<blockquote>", "").replace("</blockquote>", "")
+    # Clean any previous quote tags
+    has_quote = "<blockquote" in caption
+    caption = caption.replace("<blockquote expandable>", "").replace("<blockquote>", "").replace("</blockquote>", "")
+    
+    if has_quote:
         await query.answer("Quote removed", show_alert=False)
     else:
-        # Better quote: wrap the whole caption properly for Telegram
-        caption = f"<blockquote expandable>{caption}</blockquote>"
-        await query.answer("Quote added (expandable)", show_alert=False)
+        caption = f"<blockquote>{caption}</blockquote>"
+        await query.answer("Quote added", show_alert=False)
     
     context.user_data['post_caption_formatted'] = caption
     await _safe_edit_preview(query, "👁️ <b>POST PREVIEW</b>\n\n" + caption, InlineKeyboardMarkup(_get_preview_keyboard()))
@@ -3161,19 +3176,28 @@ async def post_edit_title_start(update: Update, context: ContextTypes.DEFAULT_TY
 async def post_edit_title_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     new_title = update.message.text.strip()
     old_caption = context.user_data.get('post_caption_formatted', '')
-    # Simple approach: put new title at top
-    context.user_data['post_caption_formatted'] = f"<b>{new_title}</b>\n\n{old_caption}"
-    await update.message.reply_text("✅ Temporary title updated. Ab Preview mein check karein.", parse_mode=ParseMode.HTML)
-    # show preview again
-    caption = context.user_data['post_caption_formatted']
-    preview_kb = [
-        [InlineKeyboardButton("✅ Publish", callback_data="post_preview_publish")],
-        [InlineKeyboardButton("✏️ Edit Title/Desc", callback_data="post_preview_edit")],
-        [InlineKeyboardButton("📝 Toggle Quote", callback_data="post_preview_quote")],
-        [InlineKeyboardButton("🔄 Change Chat ID", callback_data="post_preview_change_chat")],
-        [InlineKeyboardButton("❌ Cancel", callback_data="post_preview_cancel")]
-    ]
-    await update.message.reply_text("👁️ <b>POST PREVIEW</b>\n\n" + caption, reply_markup=InlineKeyboardMarkup(preview_kb), parse_mode=ParseMode.HTML)
+    
+    # Remove quote tags temporarily for editing
+    was_quoted = "<blockquote" in old_caption
+    old_caption = old_caption.replace("<blockquote expandable>", "").replace("<blockquote>", "").replace("</blockquote>", "")
+    
+    # Replace first <b>...</b> which is usually the title, otherwise prepend
+    import re as _re
+    if _re.search(r'<b>[^<]+</b>', old_caption):
+        old_caption = _re.sub(r'<b>[^<]+</b>', f'<b>{new_title}</b>', old_caption, count=1)
+    else:
+        old_caption = f"<b>{new_title}</b>\n\n{old_caption}"
+    
+    if was_quoted:
+        old_caption = f"<blockquote>{old_caption}</blockquote>"
+    
+    context.user_data['post_caption_formatted'] = old_caption
+    await update.message.reply_text("✅ Title updated (temporary).", parse_mode=ParseMode.HTML)
+    await update.message.reply_text(
+        "👁️ <b>POST PREVIEW</b>\n\n" + old_caption,
+        reply_markup=InlineKeyboardMarkup(_get_preview_keyboard()),
+        parse_mode=ParseMode.HTML
+    )
     return PG_PREVIEW
 
 async def post_edit_desc_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3184,23 +3208,34 @@ async def post_edit_desc_start(update: Update, context: ContextTypes.DEFAULT_TYP
 
 async def post_edit_desc_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     new_desc = update.message.text.strip()
-    # Replace or set description properly
     old_caption = context.user_data.get('post_caption_formatted', '')
     
-    # Agar pehle se synopsis hai to replace, warna add
-    if "📖 Synopsis:" in old_caption or "Synopsis:" in old_caption:
-        # simple replace after Synopsis
-        import re as _re
-        old_caption = _re.sub(r'(📖?\s*Synopsis:.*?)(\n\n|$)', f'📖 Synopsis:</b>\n{new_desc}\\2', old_caption, flags=_re.DOTALL)
-        # clean double tags if any
-        old_caption = old_caption.replace("</b></b>", "</b>")
+    was_quoted = "<blockquote" in old_caption
+    old_caption = old_caption.replace("<blockquote expandable>", "").replace("<blockquote>", "").replace("</blockquote>", "")
+    
+    import re as _re
+    if "Synopsis:" in old_caption:
+        # Replace everything after Synopsis: until end or double newline after
+        old_caption = _re.sub(
+            r'(Synopsis:</(?:b|f)>?\s*\n?)(.*)',
+            f'Synopsis:</b>\n{new_desc}',
+            old_caption,
+            count=1,
+            flags=_re.DOTALL
+        )
     else:
         old_caption = old_caption + f"\n\n<b>📖 Synopsis:</b>\n{new_desc}"
     
+    if was_quoted:
+        old_caption = f"<blockquote>{old_caption}</blockquote>"
+    
     context.user_data['post_caption_formatted'] = old_caption
-    await update.message.reply_text("✅ Temporary description updated.", parse_mode=ParseMode.HTML)
-    caption = context.user_data['post_caption_formatted']
-    await update.message.reply_text("👁️ <b>POST PREVIEW</b>\n\n" + caption, reply_markup=InlineKeyboardMarkup(_get_preview_keyboard()), parse_mode=ParseMode.HTML)
+    await update.message.reply_text("✅ Description updated (temporary).", parse_mode=ParseMode.HTML)
+    await update.message.reply_text(
+        "👁️ <b>POST PREVIEW</b>\n\n" + old_caption,
+        reply_markup=InlineKeyboardMarkup(_get_preview_keyboard()),
+        parse_mode=ParseMode.HTML
+    )
     return PG_PREVIEW
 
 # --- NAYA: Conversation: Generate Link ---
@@ -5302,7 +5337,7 @@ def main():
     post_gen_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(post_gen_menu, pattern="^admin_post_gen$")], 
         states={
-            PG_MENU: [CallbackQueryHandler(post_gen_select_anime, pattern="^post_gen_season$|^post_gen_episode$|^post_gen_anime$")], 
+            PG_MENU: [CallbackQueryHandler(post_gen_select_anime, pattern="^post_gen_season$|^post_gen_episode$|^post_gen_anime$|^post_gen_movie$")], 
             PG_GET_ANIME: [
                 CallbackQueryHandler(post_gen_show_anime_list, pattern="^postgen_page_"),
                 CallbackQueryHandler(post_gen_select_season, pattern="^post_anime_")
