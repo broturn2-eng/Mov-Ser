@@ -855,7 +855,7 @@ async def _update_anime_timestamp(anime_name: str):
 (M_GET_NAME, M_GET_POSTER, M_GET_DESC, M_GET_480P, M_GET_720P, M_GET_1080P, M_GET_4K, M_CONFIRM) = range(92, 100)
 
 # NAYA: Post Preview / Edit States
-(PG_PREVIEW, PG_EDIT_MENU, PG_EDIT_TITLE, PG_EDIT_DESC) = range(100, 104)
+(PG_PREVIEW, PG_EDIT_MENU, PG_EDIT_TITLE, PG_EDIT_DESC, PG_EDIT_FOOTER) = range(100, 105)
 
 # NAYA: Default Publish Chat
 (DPC_GET_CHAT,) = range(104, 105)
@@ -3051,20 +3051,29 @@ async def post_gen_get_short_link(update: Update, context: ContextTypes.DEFAULT_
     context.user_data['post_caption_formatted'] = caption_formatted
     context.user_data['post_caption_raw'] = caption_raw
     
-    # Structured parts for clean edit (title / body / quote alag)
+    # 3 parts: Title / Middle description / Download footer
     import re as _re
-    # Extract first bold as title
     title_match = _re.search(r'<b>([^<]+)</b>', caption_formatted)
     if title_match:
         context.user_data['post_edit_title'] = title_match.group(1).strip()
-        # Body = everything after first bold title block
-        body = caption_formatted[title_match.end():].strip()
-        # Remove leading newlines
-        body = body.lstrip('\n')
-        context.user_data['post_edit_body'] = body
+        rest = caption_formatted[title_match.end():].strip().lstrip('\n')
     else:
         context.user_data['post_edit_title'] = context.user_data.get('anime_name', '')
-        context.user_data['post_edit_body'] = caption_formatted
+        rest = caption_formatted
+    
+    # Footer = last line with Download / Press On
+    lines = rest.split('\n')
+    footer_idx = None
+    for i in range(len(lines) - 1, -1, -1):
+        if 'Download' in lines[i] or 'download' in lines[i] or 'Press On' in lines[i]:
+            footer_idx = i
+            break
+    if footer_idx is not None:
+        context.user_data['post_edit_footer'] = '\n'.join(lines[footer_idx:]).strip()
+        context.user_data['post_edit_middle'] = '\n'.join(lines[:footer_idx]).strip()
+    else:
+        context.user_data['post_edit_footer'] = ''
+        context.user_data['post_edit_middle'] = rest
     context.user_data['post_is_quoted'] = False
     
     # === PREVIEW ===
@@ -3186,11 +3195,18 @@ async def post_preview_edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     keyboard = [
-        [InlineKeyboardButton("✏️ Edit Title (temp)", callback_data="post_edit_title")],
-        [InlineKeyboardButton("✏️ Edit Description (temp)", callback_data="post_edit_desc")],
+        [InlineKeyboardButton("1️⃣ Edit Title", callback_data="post_edit_title")],
+        [InlineKeyboardButton("2️⃣ Edit Description (middle)", callback_data="post_edit_desc")],
+        [InlineKeyboardButton("3️⃣ Edit Download Line", callback_data="post_edit_footer")],
         [InlineKeyboardButton("⬅️ Back to Preview", callback_data="post_preview_back")]
     ]
-    await _safe_edit_preview(query, "✏️ <b>Temporary Edit</b>\n\nYe changes <b>sirf is post</b> ke liye hain.\nDatabase mein original name/desc <b>save rahega</b>.", InlineKeyboardMarkup(keyboard))
+    await _safe_edit_preview(query, 
+        "✏️ <b>Temporary Edit</b> (sirf is post ke liye)\n\n"
+        "1️⃣ <b>Title</b> – upar wala naam\n"
+        "2️⃣ <b>Description</b> – TYPE / LANGUAGE / QUALITY wala block\n"
+        "3️⃣ <b>Download Line</b> – neeche Press On Download\n\n"
+        "Database mein original save rahega.",
+        InlineKeyboardMarkup(keyboard))
     return PG_EDIT_MENU
 
 def _get_preview_keyboard():
@@ -3203,20 +3219,23 @@ def _get_preview_keyboard():
     ]
 
 async def _rebuild_post_caption(context):
-    """Title + body + quote se caption rebuild karta hai (merge nahi hota)"""
-    title = context.user_data.get('post_edit_title', '')
-    body = context.user_data.get('post_edit_body', '')
+    """Title + middle + footer se caption banata hai"""
+    title = context.user_data.get('post_edit_title', '') or ''
+    middle = context.user_data.get('post_edit_middle', '') or ''
+    footer = context.user_data.get('post_edit_footer', '') or ''
     is_quoted = context.user_data.get('post_is_quoted', False)
     
-    if title and body:
-        caption = f"<b>{title}</b>\n\n{body}"
-    elif title:
-        caption = f"<b>{title}</b>"
-    else:
-        caption = body or context.user_data.get('post_caption_formatted', '')
+    parts = []
+    if title:
+        parts.append(f"<b>{title}</b>")
+    if middle:
+        parts.append(middle)
+    if footer:
+        parts.append(footer)
     
-    if is_quoted and caption:
-        # Sirf content quote mein, header nahi
+    caption = "\n\n".join(parts) if parts else context.user_data.get('post_caption_formatted', '')
+    
+    if is_quoted and caption and "<blockquote" not in caption:
         caption = f"<blockquote>{caption}</blockquote>"
     
     context.user_data['post_caption_formatted'] = caption
@@ -3225,25 +3244,17 @@ async def _rebuild_post_caption(context):
 async def post_preview_quote(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    
-    # Toggle quote flag
     is_quoted = context.user_data.get('post_is_quoted', False)
     context.user_data['post_is_quoted'] = not is_quoted
-    
     caption = await _rebuild_post_caption(context)
-    
-    if context.user_data['post_is_quoted']:
-        await query.answer("Quote ON", show_alert=False)
-    else:
-        await query.answer("Quote OFF", show_alert=False)
-    
+    await query.answer("Quote ON" if context.user_data['post_is_quoted'] else "Quote OFF", show_alert=False)
     await _safe_edit_preview(query, "👁️ <b>POST PREVIEW</b>\n\n" + caption, InlineKeyboardMarkup(_get_preview_keyboard()))
     return PG_PREVIEW
 
 async def post_preview_change_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    await _safe_edit_preview(query, "🔄 Naya <b>Chat ID</b> ya <b>@username</b> bhejo jahaan post karna hai:\n\n/cancel to cancel")
+    await _safe_edit_preview(query, "🔄 Naya <b>Chat ID</b> ya <b>@username</b> bhejo:\n\n/cancel to cancel")
     return PG_GET_CHAT
 
 async def post_preview_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3264,7 +3275,7 @@ async def post_edit_title_start(update: Update, context: ContextTypes.DEFAULT_TY
     query = update.callback_query
     await query.answer()
     current = context.user_data.get('post_edit_title', '')
-    msg = "✏️ Naya <b>Title</b> bhejo (sirf is post ke liye):\n\n"
+    msg = "1️⃣ <b>Edit Title</b>\n\nSirf naya title bhejo (HTML nahi chahiye):\n\n"
     if current:
         msg += f"Current: <code>{current}</code>\n\n"
     msg += "/cancel to cancel"
@@ -3273,67 +3284,63 @@ async def post_edit_title_start(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def post_edit_title_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     new_title = update.message.text.strip()
-    old_title = context.user_data.get('post_edit_title', '')
+    # Strip accidental HTML
+    import re as _re
+    new_title = _re.sub(r'<[^>]+>', '', new_title).strip()
     context.user_data['post_edit_title'] = new_title
-    
-    # Body mein bhi purana title ho to replace kar do
-    body = context.user_data.get('post_edit_body', '')
-    if old_title and old_title in body:
-        body = body.replace(old_title, new_title)
-        context.user_data['post_edit_body'] = body
-    
     caption = await _rebuild_post_caption(context)
     await update.message.reply_text("✅ Title updated.", parse_mode=ParseMode.HTML)
-    await update.message.reply_text(
-        "👁️ <b>POST PREVIEW</b>\n\n" + caption,
-        reply_markup=InlineKeyboardMarkup(_get_preview_keyboard()),
-        parse_mode=ParseMode.HTML
-    )
+    await update.message.reply_text("👁️ <b>POST PREVIEW</b>\n\n" + caption, reply_markup=InlineKeyboardMarkup(_get_preview_keyboard()), parse_mode=ParseMode.HTML)
     return PG_PREVIEW
 
 async def post_edit_desc_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    current_body = context.user_data.get('post_edit_body', '') or context.user_data.get('post_caption_formatted', '')
-    # Truncate if too long for message
-    preview_current = current_body[:800] + ("..." if len(current_body) > 800 else "")
-    msg = "✏️ Naya <b>Description / Synopsis</b> bhejo (sirf is post ke liye):\n\n"
-    if preview_current:
-        msg += f"<b>Current:</b>\n<code>{preview_current}</code>\n\n"
+    current = context.user_data.get('post_edit_middle', '') or ''
+    # Show raw so user can keep blockquote tags
+    msg = "2️⃣ <b>Edit Description (middle block)</b>\n\n"
+    msg += "Neeche current text hai. Copy karke change karke bhejo.\n"
+    msg += "Blockquote / bold tags rakh sakte ho.\n\n"
+    if current:
+        # Escape for display in code so tags visible
+        shown = current.replace('<', '&lt;').replace('>', '&gt;')
+        if len(shown) > 900:
+            shown = shown[:900] + "..."
+        msg += f"<b>Current (copy this):</b>\n<code>{shown}</code>\n\n"
     msg += "/cancel to cancel"
     await _safe_edit_preview(query, msg)
     return PG_EDIT_DESC
 
 async def post_edit_desc_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    new_desc = update.message.text.strip()
-    old_body = context.user_data.get('post_edit_body', '')
-    
-    # Download instruction line preserve karo
-    download_line = ""
-    for line in old_body.split('\n'):
-        if 'Download' in line or 'download' in line or 'Press On' in line:
-            download_line = line.strip()
-            break
-    
-    # User jo bheje woh pure body ban jaye (custom format support)
-    # Agar user ne HTML tags nahi bheje to plain text as synopsis
-    if '<' in new_desc:
-        # User ne HTML/formatted text bheja - as is use karo
-        new_body = new_desc
-    else:
-        new_body = f"<b>📖 Synopsis:</b>\n{new_desc}"
-    
-    if download_line and download_line not in new_body:
-        new_body = new_body + f"\n\n{download_line}"
-    
-    context.user_data['post_edit_body'] = new_body
+    new_middle = update.message.text.strip()
+    # User might paste escaped or raw - accept both
+    new_middle = new_middle.replace('&lt;', '<').replace('&gt;', '>')
+    context.user_data['post_edit_middle'] = new_middle
     caption = await _rebuild_post_caption(context)
     await update.message.reply_text("✅ Description updated.", parse_mode=ParseMode.HTML)
-    await update.message.reply_text(
-        "👁️ <b>POST PREVIEW</b>\n\n" + caption,
-        reply_markup=InlineKeyboardMarkup(_get_preview_keyboard()),
-        parse_mode=ParseMode.HTML
-    )
+    await update.message.reply_text("👁️ <b>POST PREVIEW</b>\n\n" + caption, reply_markup=InlineKeyboardMarkup(_get_preview_keyboard()), parse_mode=ParseMode.HTML)
+    return PG_PREVIEW
+
+async def post_edit_footer_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    current = context.user_data.get('post_edit_footer', '') or ''
+    msg = "3️⃣ <b>Edit Download Line</b>\n\n"
+    msg += "Neeche wala line (Press On Download etc.)\n\n"
+    if current:
+        shown = current.replace('<', '&lt;').replace('>', '&gt;')
+        msg += f"Current: <code>{shown}</code>\n\n"
+    msg += "/cancel to cancel"
+    await _safe_edit_preview(query, msg)
+    return PG_EDIT_FOOTER
+
+async def post_edit_footer_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    new_footer = update.message.text.strip()
+    new_footer = new_footer.replace('&lt;', '<').replace('&gt;', '>')
+    context.user_data['post_edit_footer'] = new_footer
+    caption = await _rebuild_post_caption(context)
+    await update.message.reply_text("✅ Download line updated.", parse_mode=ParseMode.HTML)
+    await update.message.reply_text("👁️ <b>POST PREVIEW</b>\n\n" + caption, reply_markup=InlineKeyboardMarkup(_get_preview_keyboard()), parse_mode=ParseMode.HTML)
     return PG_PREVIEW
 
 # --- NAYA: Conversation: Generate Link ---
@@ -4383,6 +4390,7 @@ async def admin_settings_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
         [InlineKeyboardButton("👥 List Co-Admins", callback_data="admin_list_co_admin")],
         [InlineKeyboardButton(f"📍 Default Publish Chat: {default_chat}", callback_data="admin_set_default_chat")],
         [InlineKeyboardButton("📢 Promo Channels (Thank You)", callback_data="admin_promo_channels")],
+        [InlineKeyboardButton("🌐 Bot Language", callback_data="admin_set_language")],
         [InlineKeyboardButton("🚀 Custom Post Generator", callback_data="admin_custom_post")],
         [InlineKeyboardButton("📢 Broadcast Message", callback_data="admin_broadcast_start")],
         [InlineKeyboardButton("⬅️ Back to Admin Menu", callback_data="admin_menu")]
@@ -4448,6 +4456,49 @@ async def set_default_chat_clear(update: Update, context: ContextTypes.DEFAULT_T
 # ============================================
 # ===     PROMO CHANNELS + THANK YOU       ===
 # ============================================
+
+# ============================================
+# ===     BOT LANGUAGE SETTING             ===
+# ============================================
+LANG_LABELS = {
+    "hinglish": "Hinglish",
+    "hindi": "हिंदी",
+    "english": "English",
+    "bengali": "বাংলা",
+    "arabic": "العربية"
+}
+
+async def language_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    config = await get_config()
+    current = config.get("bot_language", "hinglish")
+    text = f"🌐 <b>Bot Language</b>\n\nCurrent: <b>{LANG_LABELS.get(current, current)}</b>\n\nSelect language (admin menus + key messages):"
+    keyboard = [
+        [InlineKeyboardButton(f"{'✅ ' if current=='hinglish' else ''}Hinglish", callback_data="lang_hinglish")],
+        [InlineKeyboardButton(f"{'✅ ' if current=='hindi' else ''}हिंदी Hindi", callback_data="lang_hindi")],
+        [InlineKeyboardButton(f"{'✅ ' if current=='english' else ''}English", callback_data="lang_english")],
+        [InlineKeyboardButton(f"{'✅ ' if current=='bengali' else ''}বাংলা Bengali", callback_data="lang_bengali")],
+        [InlineKeyboardButton(f"{'✅ ' if current=='arabic' else ''}العربية Arabic", callback_data="lang_arabic")],
+        [InlineKeyboardButton("⬅️ Back", callback_data="admin_menu_admin_settings")]
+    ]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+
+async def language_set(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    lang = query.data.replace("lang_", "")
+    config_collection.update_one(
+        {"_id": "bot_config"},
+        {"$set": {"bot_language": lang}},
+        upsert=True
+    )
+    await query.edit_message_text(
+        f"✅ Language set to <b>{LANG_LABELS.get(lang, lang)}</b>\n\nBot restart ke baad / full refresh se menus update honge.\nKey messages language ke hisaab se change honge.",
+        parse_mode=ParseMode.HTML,
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="admin_menu_admin_settings")]])
+    )
+
 async def promo_channels_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -5574,10 +5625,12 @@ def main():
             PG_EDIT_MENU: [
                 CallbackQueryHandler(post_edit_title_start, pattern="^post_edit_title$"),
                 CallbackQueryHandler(post_edit_desc_start, pattern="^post_edit_desc$"),
+                CallbackQueryHandler(post_edit_footer_start, pattern="^post_edit_footer$"),
                 CallbackQueryHandler(post_preview_back, pattern="^post_preview_back$"),
             ],
             PG_EDIT_TITLE: [MessageHandler(filters.TEXT & ~filters.COMMAND, post_edit_title_save)],
             PG_EDIT_DESC: [MessageHandler(filters.TEXT & ~filters.COMMAND, post_edit_desc_save)],
+            PG_EDIT_FOOTER: [MessageHandler(filters.TEXT & ~filters.COMMAND, post_edit_footer_save)],
         }, 
         fallbacks=global_fallbacks + admin_menu_fallback,
         allow_reentry=True 
@@ -5900,6 +5953,8 @@ def main():
     bot_app.add_handler(set_default_chat_conv)  # NAYA: Default Publish Chat
     bot_app.add_handler(promo_conv)  # NAYA: Promo channels
     bot_app.add_handler(CallbackQueryHandler(promo_channels_menu, pattern="^admin_promo_channels$"))
+    bot_app.add_handler(CallbackQueryHandler(language_menu, pattern="^admin_set_language$"))
+    bot_app.add_handler(CallbackQueryHandler(language_set, pattern="^lang_"))
     bot_app.add_handler(merge_anime_conv) # NAYA: New feature (v33)
 
     # Standard commands
