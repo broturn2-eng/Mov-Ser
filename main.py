@@ -282,9 +282,17 @@ async def format_message(context: ContextTypes.DEFAULT_TYPE, key: str, variables
     """
     config = await get_config()
     
-    # 1. Message template DB se laao
-    default_messages = await get_default_messages() # Default list laao
-    raw_text = config.get("messages", {}).get(key, default_messages.get(key, f"MISSING_KEY: {key}"))
+    # 1. Message template - language pack pehle, phir DB, phir default
+    default_messages = await get_default_messages()
+    lang = config.get("bot_language", "hinglish")
+    
+    raw_text = None
+    if lang and lang != "hinglish" and lang in LANGUAGE_PACKS:
+        raw_text = LANGUAGE_PACKS[lang].get(key)
+    if not raw_text:
+        raw_text = config.get("messages", {}).get(key)
+    if not raw_text:
+        raw_text = default_messages.get(key, f"MISSING_KEY: {key}")
     
     # 2. Variables (jaise {anime_name}) replace karo (PEHLE)
     if variables:
@@ -319,6 +327,63 @@ async def format_message(context: ContextTypes.DEFAULT_TYPE, key: str, variables
 
 
 # --- NAYA: Saare Default Messages Ek Jagah (v34 Update) ---
+
+# ============================================
+# ===     MULTI LANGUAGE PACKS             ===
+# ============================================
+LANGUAGE_PACKS = {
+    "english": {
+        "admin_panel_main": "👑 <b><f>Hello, Admin!</f></b> 👑\n<f>Your control panel is ready.</f>",
+        "admin_panel_co": "👑 <b><f>Hello, Co-Admin!</f></b> 👑\n<f>Your content panel is ready.</f>",
+        "admin_menu_add_content": "➕ <b><f>Add Content</f></b> ➕\n\n<f>What do you want to add?</f>",
+        "admin_menu_post_gen": "✍️ <b><f>Post Generator</f></b> ✍️\n\n<f>What type of post do you want to generate?</f>",
+        "admin_cancel": "<f>Operation cancelled.</f>",
+        "user_dl_anime_not_found": "❌ <f>Error: Series/Movie not found.</f>",
+        "user_dl_select_season": "<b>{anime_name}</b>\n\n<f>Select season:</f>",
+        "user_dl_select_episode": "<b>{anime_name}</b> | <b>Season {season_name}</b>\n\n<f>Select episode:</f>",
+        "user_dl_sending_files": "✅ <b>{anime_name}</b> | <b>S{season_name}</b> | <b>E{ep_num}</b>\n\n<f>Sending all your files...</f>",
+        "file_warning": "⚠️ <b><f>This file will auto-delete in {minutes} minute(s).</f></b>",
+    },
+    "hindi": {
+        "admin_panel_main": "👑 <b><f>नमस्ते, एडमिन!</f></b> 👑\n<f>आपका कंट्रोल पैनल तैयार है।</f>",
+        "admin_panel_co": "👑 <b><f>नमस्ते, को-एडमिन!</f></b> 👑\n<f>आपका कंटेंट पैनल तैयार है।</f>",
+        "admin_menu_add_content": "➕ <b><f>कंटेंट जोड़ें</f></b> ➕\n\n<f>आप क्या जोड़ना चाहते हैं?</f>",
+        "admin_menu_post_gen": "✍️ <b><f>पोस्ट जनरेटर</f></b> ✍️\n\n<f>किस तरह की पोस्ट बनानी है?</f>",
+        "admin_cancel": "<f>ऑपरेशन रद्द कर दिया गया।</f>",
+        "user_dl_anime_not_found": "❌ <f>त्रुटि: सीरीज़/मूवी नहीं मिली।</f>",
+        "user_dl_select_season": "<b>{anime_name}</b>\n\n<f>सीज़न चुनें:</f>",
+        "user_dl_select_episode": "<b>{anime_name}</b> | <b>सीज़न {season_name}</b>\n\n<f>एपिसोड चुनें:</f>",
+        "user_dl_sending_files": "✅ <b>{anime_name}</b> | <b>S{season_name}</b> | <b>E{ep_num}</b>\n\n<f>आपकी सभी फाइलें भेज रहा हूँ...</f>",
+        "file_warning": "⚠️ <b><f>यह फाइल {minutes} मिनट में अपने आप डिलीट हो जाएगी।</f></b>",
+    },
+    "bengali": {
+        "admin_panel_main": "👑 <b><f>নমস্কার, অ্যাডমিন!</f></b> 👑\n<f>আপনার কন্ট্রোল প্যানেল প্রস্তুত।</f>",
+        "admin_panel_co": "👑 <b><f>নমস্কার, কো-অ্যাডমিন!</f></b> 👑\n<f>আপনার কন্টেন্ট প্যানেল প্রস্তুত।</f>",
+        "admin_menu_add_content": "➕ <b><f>কন্টেন্ট যোগ করুন</f></b> ➕\n\n<f>আপনি কী যোগ করতে চান?</f>",
+        "admin_menu_post_gen": "✍️ <b><f>পোস্ট জেনারেটর</f></b> ✍️\n\n<f>কী ধরনের পোস্ট তৈরি করবেন?</f>",
+        "admin_cancel": "<f>অপারেশন বাতিল করা হয়েছে।</f>",
+        "user_dl_anime_not_found": "❌ <f>ত্রুটি: সিরিজ/মুভি পাওয়া যায়নি।</f>",
+        "user_dl_select_season": "<b>{anime_name}</b>\n\n<f>সিজন বেছে নিন:</f>",
+        "user_dl_select_episode": "<b>{anime_name}</b> | <b>সিজন {season_name}</b>\n\n<f>এপিসোড বেছে নিন:</f>",
+        "user_dl_sending_files": "✅ <b>{anime_name}</b> | <b>S{season_name}</b> | <b>E{ep_num}</b>\n\n<f>আপনার সব ফাইল পাঠাচ্ছি...</f>",
+        "file_warning": "⚠️ <b><f>এই ফাইল {minutes} মিনিটে নিজে থেকে মুছে যাবে।</f></b>",
+    },
+    "arabic": {
+        "admin_panel_main": "👑 <b><f>مرحباً أيها المشرف!</f></b> 👑\n<f>لوحة التحكم جاهزة.</f>",
+        "admin_panel_co": "👑 <b><f>مرحباً أيها المشرف المساعد!</f></b> 👑\n<f>لوحة المحتوى جاهزة.</f>",
+        "admin_menu_add_content": "➕ <b><f>إضافة محتوى</f></b> ➕\n\n<f>ماذا تريد أن تضيف؟</f>",
+        "admin_menu_post_gen": "✍️ <b><f>مولّد المنشورات</f></b> ✍️\n\n<f>ما نوع المنشور؟</f>",
+        "admin_cancel": "<f>تم إلغاء العملية.</f>",
+        "user_dl_anime_not_found": "❌ <f>خطأ: السلسلة/الفيلم غير موجود.</f>",
+        "user_dl_select_season": "<b>{anime_name}</b>\n\n<f>اختر الموسم:</f>",
+        "user_dl_select_episode": "<b>{anime_name}</b> | <b>الموسم {season_name}</b>\n\n<f>اختر الحلقة:</f>",
+        "user_dl_sending_files": "✅ <b>{anime_name}</b> | <b>S{season_name}</b> | <b>E{ep_num}</b>\n\n<f>جاري إرسال جميع الملفات...</f>",
+        "file_warning": "⚠️ <b><f>سيتم حذف هذا الملف تلقائياً خلال {minutes} دقيقة.</f></b>",
+    },
+    # hinglish = default messages (already in get_default_messages)
+}
+
+
 async def get_default_messages():
     """
     Saare default messages ki list, <f> tags aur HTML ke saath.
@@ -3284,12 +3349,21 @@ async def post_edit_title_start(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def post_edit_title_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     new_title = update.message.text.strip()
-    # Strip accidental HTML
     import re as _re
     new_title = _re.sub(r'<[^>]+>', '', new_title).strip()
+    old_title = context.user_data.get('post_edit_title', '') or ''
     context.user_data['post_edit_title'] = new_title
+    
+    # Middle + footer mein bhi purana title replace (quote ke andar bhi)
+    for key in ('post_edit_middle', 'post_edit_footer'):
+        part = context.user_data.get(key, '') or ''
+        if old_title and old_title in part:
+            part = part.replace(old_title, new_title)
+            context.user_data[key] = part
+        # Short forms bhi try (e.g. "P & P" if present as separate quoted title line)
+    
     caption = await _rebuild_post_caption(context)
-    await update.message.reply_text("✅ Title updated.", parse_mode=ParseMode.HTML)
+    await update.message.reply_text("✅ Title updated (bahar + andar dono).", parse_mode=ParseMode.HTML)
     await update.message.reply_text("👁️ <b>POST PREVIEW</b>\n\n" + caption, reply_markup=InlineKeyboardMarkup(_get_preview_keyboard()), parse_mode=ParseMode.HTML)
     return PG_PREVIEW
 
