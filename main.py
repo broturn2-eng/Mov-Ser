@@ -1,6 +1,7 @@
 # ============================================
-# ===       COMPLETE WORKING BOT (v60)     ===
-# ===   Fully Functional - Part 1 of 5     ===
+# ===     COMPLETE WORKING BOT (v70)       ===
+# ===  Movies + Series (from solid v34)    ===
+# ===         PART 1 of 4                  ===
 # ============================================
 
 import os
@@ -13,7 +14,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 from pymongo import MongoClient, ASCENDING, DESCENDING
 from bson.objectid import ObjectId
-from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, User, InputMediaPhoto
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, InputMediaPhoto
 from telegram.constants import ParseMode
 from telegram.ext import (
     Application, CommandHandler, ContextTypes, ConversationHandler,
@@ -68,11 +69,27 @@ FONT_MAPS = {
         'J': '𝗝', 'K': '𝗞', 'L': '𝗟', 'M': '𝗠', 'N': '𝗡', 'O': '𝗢', 'P': '𝗣', 'Q': '𝗤', 'R': '𝗥',
         'S': '𝗦', 'T': '𝗧', 'U': '𝗨', 'V': '𝗩', 'W': '𝗪', 'X': '𝗫', 'Y': '𝗬', 'Z': '𝗭',
         '0': '𝟬', '1': '𝟭', '2': '𝟮', '3': '𝟯', '4': '𝟰', '5': '𝟱', '6': '𝟲', '7': '𝟳', '8': '𝟴', '9': '𝟵'
+    },
+    'sans_serif_regular': {
+        'a': '𝖺', 'b': '𝖻', 'c': '𝖼', 'd': '𝖽', 'e': '𝖾', 'f': '𝖿', 'g': '𝗀', 'h': '𝗁', 'i': '𝗂',
+        'j': '𝗃', 'k': '𝗄', 'l': '𝗅', 'm': '𝗆', 'n': '𝗇', 'o': '𝗈', 'p': '𝗉', 'q': '𝗊', 'r': '𝗋',
+        's': '𝗌', 't': '𝗍', 'u': '𝗎', 'v': '𝗏', 'w': '𝗐', 'x': '𝗑', 'y': '𝗒', 'z': '𝗓',
+        'A': '𝖠', 'B': '𝖡', 'C': '𝖢', 'D': '𝖣', 'E': '𝖤', 'F': '𝖥', 'G': '𝖦', 'H': '𝖧', 'I': '𝖨',
+        'J': '𝖩', 'K': '𝖪', 'L': '𝖫', 'M': '𝖬', 'N': '𝖭', 'O': '𝖮', 'P': '𝖯', 'Q': '𝖰', 'R': '𝖱',
+        'S': '𝖲', 'T': '𝖳', 'U': '𝖴', 'V': '𝖵', 'W': '𝖶', 'X': '𝖷', 'Y': '𝖸', 'Z': '𝖹',
+        '0': '𝟢', '1': '𝟣', '2': '𝟤', '3': '𝟥', '4': '𝟦', '5': '𝟧', '6': '𝟨', '7': '𝟩', '8': '𝟪', '9': '𝟫'
+    },
+    'sans_serif_regular_bold': {
+        'a': '𝗮', 'b': '𝗯', 'c': '𝗰', 'd': '𝗱', 'e': '𝗲', 'f': '𝗳', 'g': '𝗴', 'h': '𝗵', 'i': '𝗶',
+        'j': '𝗷', 'k': '𝗸', 'l': '𝗹', 'm': '𝗺', 'n': '𝗻', 'o': '𝗼', 'p': '𝗽', 'q': '𝗾', 'r': '𝗿',
+        's': '𝘀', 't': '𝘁', 'u': '𝘂', 'v': '𝘃', 'w': '𝘄', 'x': '𝘅', 'y': '𝘆', 'z': '𝘇',
+        'A': '𝗔', 'B': '𝗕', 'C': '𝗖', 'D': '𝗗', 'E': '𝗘', 'F': '𝗙', 'G': '𝗚', 'H': '𝗛', 'I': '𝗜',
+        'J': '𝗝', 'K': '𝗞', 'L': '𝗟', 'M': '𝗠', 'N': '𝗡', 'O': '𝗢', 'P': '𝗣', 'Q': '𝗤', 'R': '𝗥',
+        'S': '𝗦', 'T': '𝗧', 'U': '𝗨', 'V': '𝗩', 'W': '𝗪', 'X': '𝗫', 'Y': '𝗬', 'Z': '𝗭',
+        '0': '𝟬', '1': '𝟭', '2': '𝟮', '3': '𝟯', '4': '𝟰', '5': '𝟱', '6': '𝟲', '7': '𝟳', '8': '𝟴', '9': '𝟵'
     }
 }
 FONT_MAPS['small_caps_bold'] = FONT_MAPS['small_caps']
-FONT_MAPS['sans_serif_regular'] = FONT_MAPS['sans_serif']
-FONT_MAPS['sans_serif_regular_bold'] = FONT_MAPS['sans_serif_bold']
 FONT_MAPS['script'] = FONT_MAPS['default']
 FONT_MAPS['script_bold'] = FONT_MAPS['default_bold']
 FONT_MAPS['monospace'] = FONT_MAPS['default']
@@ -134,7 +151,7 @@ try:
     client = MongoClient(MONGO_URI)
     db = client['MovieBotDB']
     users_collection = db['users']
-    movies_collection = db['movies']
+    movies_collection = db['movies']   # type: "movie" or "series"
     config_collection = db['config']
     
     movies_collection.create_index([("name", ASCENDING)])
@@ -143,9 +160,9 @@ try:
     users_collection.create_index([("interaction_count", DESCENDING)])
     
     client.admin.command('ping')
-    logger.info("✅ MongoDB Connected Successfully")
+    logger.info("✅ MongoDB Connected")
 except Exception as e:
-    logger.error(f"❌ MongoDB Connection Failed: {e}")
+    logger.error(f"❌ MongoDB Failed: {e}")
     exit()
 
 ITEMS_PER_PAGE = 15
@@ -162,7 +179,11 @@ async def is_co_admin(user_id: int) -> bool:
 
 async def increment_user_interaction(user_id: int):
     try:
-        users_collection.update_one({"_id": user_id}, {"$inc": {"interaction_count": 1}}, upsert=True)
+        users_collection.update_one(
+            {"_id": user_id},
+            {"$inc": {"interaction_count": 1}},
+            upsert=True
+        )
     except:
         pass
 
@@ -192,7 +213,8 @@ async def build_paginated_keyboard(collection, page, page_prefix, item_prefix, b
     buttons = []
     for item in items:
         prefix = "📺 " if item.get("type") == "series" else "🎬 "
-        buttons.append(InlineKeyboardButton(f"{prefix}{item['name'][:40]}", callback_data=f"{item_prefix}{item['name']}"))
+        name = item['name'][:40]
+        buttons.append(InlineKeyboardButton(f"{prefix}{name}", callback_data=f"{item_prefix}{item['name']}"))
     
     keyboard = build_grid_keyboard(buttons, 2)
     
@@ -209,78 +231,82 @@ async def build_paginated_keyboard(collection, page, page_prefix, item_prefix, b
 
 # ==================== CONFIG + MESSAGES ====================
 async def get_default_messages(lang="hinglish"):
+    # Base messages (Hinglish). Language system can override later.
     return {
-        "user_dl_dm_alert": "✅ Check your DM with me!",
-        "user_dl_movie_not_found": "❌ Content not found.",
-        "user_dl_file_error": "❌ {quality} file nahi bhej paya.",
-        "user_dl_blocked_error": "❌ Aapne bot ko block kiya hua hai.",
-        "user_dl_qualities_not_found": "❌ Koi quality available nahi.",
-        "user_dl_general_error": "❌ Error! Dobara try karein.",
-        "user_dl_select_quality": "<b>{movie_name}</b>\n\nQuality select karein:",
-        "file_warning": "⚠️ Yeh file {minutes} minute mein auto-delete ho jaayegi.",
-        "user_dl_fetching": "⏳ Fetching files...",
-        "user_menu_greeting": "Salaam {full_name}! Ye raha aapka menu:",
-        "user_donate_qr_error": "❌ Donation abhi set nahi hai.",
-        "user_donate_qr_text": "❤️ <b>Support Us!</b>\n\nAgar aapko pasand aaya toh support kar sakte ho.",
-        "donate_thanks": "❤️ Support ke liye shukriya!",
-        "user_not_admin": "Aap admin nahi ho.",
-        "user_welcome_admin": "Salaam Admin! /menu se panel kholo.",
-        "user_welcome_basic": "Salaam {full_name}! /user se menu dekho.",
-        "admin_cancel": "Operation cancel ho gaya.",
-        "admin_panel_main": "👑 <b>Admin Panel</b>\nControl ready hai.",
-        "admin_panel_co": "👑 <b>Co-Admin Panel</b>",
-        "admin_menu_add_content": "➕ <b>Add Content</b>\n\nKya add karna hai?",
-        "admin_add_movie_start": "Movie ka <b>Naam</b> bhejo:\n\n/cancel",
-        "admin_add_movie_get_name": "Ab <b>Poster</b> bhejo:",
+        "user_dl_dm_alert": "✅ <f>Check your DM with me!</f>",
+        "user_dl_movie_not_found": "❌ <f>Content nahi mila.</f>",
+        "user_dl_file_error": "❌ <f>{quality} file nahi bhej paya.</f>",
+        "user_dl_blocked_error": "❌ <f>Aapne bot ko block kiya hua hai.</f>",
+        "user_dl_qualities_not_found": "❌ <f>Koi quality available nahi.</f>",
+        "user_dl_general_error": "❌ <f>Error! Dobara try karein.</f>",
+        "user_dl_select_quality": "<b>{movie_name}</b>\n\n<f>Quality select karein:</f>",
+        "file_warning": "⚠️ <b><f>Yeh file {minutes} minute mein auto-delete ho jaayegi.</f></b>",
+        "user_dl_fetching": "⏳ <f>Fetching...</f>",
+        "user_menu_greeting": "<f>Salaam {full_name}! Ye raha aapka menu:</f>",
+        "user_donate_qr_error": "❌ <f>Donation abhi set nahi hai.</f>",
+        "user_donate_qr_text": "❤️ <b><f>Support Us!</f></b>\n\n<f>Agar aapko pasand aaya toh support kar sakte ho.</f>",
+        "donate_thanks": "❤️ <f>Support ke liye shukriya!</f>",
+        "user_not_admin": "<f>Aap admin nahi ho.</f>",
+        "user_welcome_admin": "<f>Salaam Admin! /menu se panel kholo.</f>",
+        "user_welcome_basic": "<f>Salaam {full_name}! /user se menu dekho.</f>",
+        "admin_cancel": "<f>Operation cancel ho gaya.</f>",
+        "admin_panel_main": "👑 <b><f>Admin Panel</f></b>\n<f>Control ready hai.</f>",
+        "admin_panel_co": "👑 <b><f>Co-Admin Panel</f></b>",
+        "admin_menu_add_content": "➕ <b><f>Add Content</f></b>\n\n<f>Kya add karna hai?</f>",
+        "admin_add_movie_start": "<f>Movie ka <b>Naam</b> bhejo:</f>\n\n/cancel",
+        "admin_add_movie_get_name": "<f>Ab <b>Poster</b> bhejo:</f>",
         "admin_add_movie_get_poster_error": "Photo bhejo.",
-        "admin_add_movie_get_poster": "Ab <b>Description</b> bhejo (ya /skip):",
-        "admin_add_movie_get_desc": "Ab <b>480p</b> file bhejo (ya /skip):",
-        "admin_add_movie_skip_desc": "Ab <b>480p</b> file bhejo (ya /skip):",
-        "admin_add_movie_get_480p": "Ab <b>720p</b> file bhejo (ya /skip):",
-        "admin_add_movie_skip_480p": "Ab <b>720p</b> file bhejo (ya /skip):",
-        "admin_add_movie_get_720p": "Ab <b>1080p</b> file bhejo (ya /skip):",
-        "admin_add_movie_skip_720p": "Ab <b>1080p</b> file bhejo (ya /skip):",
-        "admin_add_movie_get_1080p": "Ab <b>4K</b> file bhejo (ya /skip):",
-        "admin_add_movie_skip_1080p": "Ab <b>4K</b> file bhejo (ya /skip):",
+        "admin_add_movie_get_poster": "<f>Ab <b>Description</b> bhejo (ya /skip):</f>",
+        "admin_add_movie_get_desc": "<f>Ab <b>480p</b> file bhejo (ya /skip):</f>",
+        "admin_add_movie_skip_desc": "<f>Ab <b>480p</b> file bhejo (ya /skip):</f>",
+        "admin_add_movie_get_480p": "<f>Ab <b>720p</b> file bhejo (ya /skip):</f>",
+        "admin_add_movie_skip_480p": "<f>Ab <b>720p</b> file bhejo (ya /skip):</f>",
+        "admin_add_movie_get_720p": "<f>Ab <b>1080p</b> file bhejo (ya /skip):</f>",
+        "admin_add_movie_skip_720p": "<f>Ab <b>1080p</b> file bhejo (ya /skip):</f>",
+        "admin_add_movie_get_1080p": "<f>Ab <b>4K</b> file bhejo (ya /skip):</f>",
+        "admin_add_movie_skip_1080p": "<f>Ab <b>4K</b> file bhejo (ya /skip):</f>",
         "admin_add_movie_no_files_error": "⚠️ Kam se kam 1 file add karo.",
         "admin_add_movie_confirm": "<b>{name}</b>\n\n{description}\n\nFiles: <b>{file_count}</b>",
         "admin_add_movie_save_exists": "⚠️ '{name}' pehle se hai.",
         "admin_add_movie_save_success": "✅ '{name}' add ho gaya.",
         "admin_add_movie_helper_invalid": "Video file bhejo ya /skip.",
         "admin_add_movie_helper_success": "✅ <b>{quality}</b> save.",
-        "admin_add_series_start": "Series ka <b>Naam</b> bhejo:\n\n/cancel",
-        "admin_add_series_get_name": "Ab <b>Poster</b> bhejo:",
-        "admin_add_series_get_poster": "Ab <b>Description</b> bhejo (ya /skip):",
-        "admin_add_series_get_desc": "Season 1 Episode 1 - 480p file bhejo:",
-        "admin_add_series_skip_desc": "Season 1 Episode 1 - 480p file bhejo:",
+        "admin_add_series_start": "<f>Series ka <b>Naam</b> bhejo:</f>\n\n/cancel",
+        "admin_add_series_get_name": "<f>Ab <b>Poster</b> bhejo:</f>",
+        "admin_add_series_get_poster": "<f>Ab <b>Description</b> bhejo (ya /skip):</f>",
+        "admin_add_series_get_desc": "<f>Season 1 Episode 1 - 480p file bhejo:</f>",
+        "admin_add_series_skip_desc": "<f>Season 1 Episode 1 - 480p file bhejo:</f>",
         "admin_add_series_confirm": "<b>{name}</b>\n\nSeasons: <b>{season_count}</b> | Episodes: <b>{episode_count}</b>",
         "admin_add_series_save_success": "✅ Series '{name}' add ho gayi.",
-        "admin_menu_donate": "❤️ <b>Donation Settings</b>",
-        "admin_set_donate_qr_start": "Donate QR photo bhejo:",
+        "admin_menu_donate": "❤️ <b><f>Donation</f></b>",
+        "admin_set_donate_qr_start": "<f>Donate QR photo bhejo:</f>",
         "admin_set_donate_qr_success": "✅ QR set ho gaya.",
-        "admin_menu_links": "🔗 <b>Other Links</b>",
-        "admin_set_link_backup": "Backup Channel link bhejo:\n/skip to remove",
-        "admin_set_link_download": "Global Download link bhejo:\n/skip to remove",
-        "admin_set_link_help": "Help link bhejo:\n/skip to remove",
+        "admin_menu_links": "🔗 <b><f>Other Links</f></b>",
+        "admin_set_link_backup": "<f>Backup Channel link bhejo:</f>\n/skip to remove",
+        "admin_set_link_download": "<f>Global Download link bhejo:</f>\n/skip to remove",
+        "admin_set_link_help": "<f>Help link bhejo:</f>\n/skip to remove",
         "admin_set_link_success": "✅ {link_type} link set.",
         "admin_set_link_skip": "✅ {link_type} link remove.",
         "admin_set_delete_time_start": "Current: <b>{current_minutes} min</b>\n\nNaya time (seconds) bhejo:",
         "admin_set_delete_time_success": "✅ Auto-delete ab <b>{seconds}s</b> ({minutes} min)",
         "admin_set_delete_time_nan": "Sirf number bhejo.",
-        "admin_menu_post_gen": "✍️ <b>Post Generator</b>",
+        "admin_menu_messages_main": "⚙️ <b><f>Bot Messages</f></b>",
+        "admin_set_msg_start": "Editing: <code>{msg_key}</code>\n\nCurrent:\n<code>{current_msg}</code>\n\nNaya message bhejo:",
+        "admin_set_msg_success": "✅ '{msg_key}' update ho gaya.",
+        "admin_menu_post_gen": "✍️ <b><f>Post Generator</f></b>",
         "admin_post_gen_select_movie": "Content select karo (Page {page}):",
         "admin_post_gen_no_movie": "❌ Koi content nahi hai.",
-        "admin_post_gen_ask_shortlink": "✅ Ready!\n\nOriginal Link:\n<code>{original_download_url}</code>\n\nShort link bhejo (ya same copy-paste kar do):",
+        "admin_post_gen_ask_shortlink": "✅ Ready!\n\nOriginal:\n<code>{original_download_url}</code>\n\nShort link bhejo (ya same copy-paste kar do):",
         "admin_post_gen_preview": "📋 <b>--- PREVIEW ---</b>\n\n{caption}\n\n🎯 Target: <code>{chat_id}</code>",
         "admin_post_gen_success": "✅ Post successfully bhej diya → <code>{chat_id}</code>",
         "admin_post_gen_error": "❌ Post nahi bhej paya.\nError: {e}",
-        "admin_menu_gen_link": "🔗 <b>Generate Link</b>",
+        "admin_menu_gen_link": "🔗 <b><f>Generate Link</f></b>",
         "admin_gen_link_select_movie": "Content select karo (Page {page}):",
         "admin_gen_link_no_movie": "❌ Koi content nahi.",
         "admin_gen_link_success": "✅ Link Generated:\n\n<code>{final_link}</code>",
         "admin_del_movie_select": "Delete karne ke liye select karo (Page {page}):",
         "admin_del_movie_no_movie": "❌ Koi content nahi.",
-        "admin_del_movie_confirm": "⚠️ <b>{movie_name}</b> ko delete karna hai?",
+        "admin_del_movie_confirm": "⚠️ <b>{movie_name}</b> delete karna hai?",
         "admin_del_movie_success": "✅ '{movie_name}' delete ho gaya.",
         "admin_edit_movie_select": "Naam edit ke liye select (Page {page}):",
         "admin_edit_movie_no_movie": "❌ Koi content nahi.",
@@ -288,18 +314,24 @@ async def get_default_messages(lang="hinglish"):
         "admin_edit_movie_save_exists": "⚠️ '{new_name}' pehle se hai.",
         "admin_edit_movie_confirm": "Purana: <code>{old_name}</code>\nNaya: <code>{new_name}</code>\n\nConfirm?",
         "admin_edit_movie_success": "✅ Naam change → '{new_name}'",
-        "admin_menu_admin_settings": "🛠️ <b>Admin Settings</b>",
+        "admin_menu_admin_settings": "🛠️ <b><f>Admin Settings</f></b>",
         "admin_default_channel_menu": "📢 <b>Default Publish Channel</b>\n\nCurrent: <code>{current}</code>",
         "admin_default_channel_set_start": "Default Channel ka @username ya Chat ID bhejo:\n\nExample: @MyChannel\nya -1001234567890",
         "admin_default_channel_success": "✅ Default Channel set → <code>{chat_id}</code>",
         "admin_default_channel_cleared": "✅ Default Channel clear kar diya.",
         "admin_language_menu": "🌐 <b>Bot Language</b>\n\nCurrent: <b>{lang}</b>",
         "admin_language_set_success": "✅ Language changed → <b>{lang}</b>",
-        "admin_menu_appearance": "🎨 <b>Bot Appearance</b>\n\nFont: <b>{font}</b>\nStyle: <b>{style}</b>\nQuote: <b>{quote}</b>",
+        "admin_menu_appearance": "🎨 <b><f>Bot Appearance</f></b>\n\nFont: <b>{font}</b>\nStyle: <b>{style}</b>\nQuote: <b>{quote}</b>",
         "admin_appearance_quote_toggle": "✅ Expandable Blockquote ab <b>{status}</b> hai.",
         "admin_post_edit_title": "Naya Title bhejo (sirf is post ke liye):",
         "admin_post_edit_desc": "Naya Description bhejo:",
         "admin_post_edit_genre": "Genre bhejo (comma separated):",
+        "admin_co_admin_add_start": "Naye Co-Admin ki Telegram User ID bhejo:",
+        "admin_co_admin_add_success": "✅ User ID {user_id} ab Co-Admin hai.",
+        "admin_co_admin_remove_start": "Kis Co-Admin ko remove karna hai?",
+        "admin_co_admin_remove_success": "✅ Co-Admin {user_id} remove ho gaya.",
+        "admin_co_admin_list_header": "<b>List of Co-Admins:</b>\n",
+        "admin_co_admin_list_none": "Abhi koi Co-Admin nahi hai.",
     }
 
 async def get_config():
@@ -325,60 +357,47 @@ async def get_config():
         config_collection.insert_one(default)
         return default
     
-    # Ensure all keys exist
-    needs_update = False
+    # Ensure all required keys exist
+    updates = {}
     if "appearance" not in config:
-        config["appearance"] = {"font": "default", "style": "normal", "quote_enabled": False}
-        needs_update = True
-    if "quote_enabled" not in config.get("appearance", {}):
-        config["appearance"]["quote_enabled"] = False
-        needs_update = True
+        updates["appearance"] = {"font": "default", "style": "normal", "quote_enabled": False}
+    else:
+        if "quote_enabled" not in config["appearance"]:
+            config["appearance"]["quote_enabled"] = False
+            updates["appearance"] = config["appearance"]
+    
     if "default_publish_chat" not in config:
-        config["default_publish_chat"] = None
-        needs_update = True
+        updates["default_publish_chat"] = None
     if "language" not in config:
-        config["language"] = "hinglish"
-        needs_update = True
+        updates["language"] = "hinglish"
     if "co_admins" not in config:
-        config["co_admins"] = []
-        needs_update = True
+        updates["co_admins"] = []
     if "delete_seconds" not in config:
-        config["delete_seconds"] = 300
-        needs_update = True
+        updates["delete_seconds"] = 300
     if "links" not in config:
-        config["links"] = {"backup": "https://t.me/", "download": None, "help": "https://t.me/"}
-        needs_update = True
+        updates["links"] = {"backup": "https://t.me/", "download": None, "help": "https://t.me/"}
     if "messages" not in config:
-        config["messages"] = {}
-        needs_update = True
+        updates["messages"] = {}
     
     # Fill missing messages
     defaults = await get_default_messages(config.get("language", "hinglish"))
     msgs = config.get("messages", {})
+    changed = False
     for k, v in defaults.items():
         if k not in msgs:
             msgs[k] = v
-            needs_update = True
+            changed = True
+    if changed:
+        updates["messages"] = msgs
     
-    if needs_update:
-        config_collection.update_one(
-            {"_id": "bot_config"},
-            {"$set": {
-                "appearance": config["appearance"],
-                "default_publish_chat": config.get("default_publish_chat"),
-                "language": config.get("language", "hinglish"),
-                "co_admins": config.get("co_admins", []),
-                "delete_seconds": config.get("delete_seconds", 300),
-                "links": config.get("links"),
-                "messages": msgs
-            }}
-        )
-        config["messages"] = msgs
+    if updates:
+        config_collection.update_one({"_id": "bot_config"}, {"$set": updates})
+        config.update(updates)
     
     return config
 
 async def format_message(context: ContextTypes.DEFAULT_TYPE, key: str, variables: dict = None) -> str:
-    """Fully working format_message with real expandable blockquote"""
+    """Fully working format_message with real expandable blockquote support"""
     config = await get_config()
     defaults = await get_default_messages(config.get("language", "hinglish"))
     
@@ -426,9 +445,9 @@ async def send_donate_thank_you(context: ContextTypes.DEFAULT_TYPE):
     except:
         pass
 
-print("✅ PART 1 LOADED SUCCESSFULLY - Core Foundation Ready")
+print("✅ PART 1 LOADED - Core Foundation Ready")
 # ============================================================
-# ===              CONVERSATION STATES (Part 2)            ===
+# ===              CONVERSATION STATES                     ===
 # ============================================================
 (M_GET_NAME, M_GET_POSTER, M_GET_DESC, M_GET_480P, M_GET_720P, M_GET_1080P, M_GET_4K, M_CONFIRM) = range(8)
 (S_GET_NAME, S_GET_POSTER, S_GET_DESC, S_GET_EPISODE, S_CONFIRM) = range(8, 13)
@@ -437,16 +456,12 @@ print("✅ PART 1 LOADED SUCCESSFULLY - Core Foundation Ready")
 (PG_MENU, PG_GET_MOVIE, PG_GET_SHORT_LINK, PG_PREVIEW, PG_EDIT_TITLE, PG_EDIT_DESC, PG_EDIT_GENRE) = range(18, 25)
 (GL_MENU, GL_GET_MOVIE) = range(25, 27)
 (CD_GET_QR, CL_GET_LINK, CS_GET_DELETE_TIME) = range(27, 30)
-(UP_GET_MOVIE, UP_GET_POSTER) = range(30, 32)
-(CA_GET_ID, CA_CONFIRM, CR_GET_ID, CR_CONFIRM) = range(32, 36)
-(CPOST_CHAT, CPOST_POSTER, CPOST_CAPTION, CPOST_BTN_TEXT, CPOST_BTN_URL, CPOST_CONFIRM) = range(36, 42)
-(MM_MAIN, MM_GET_MSG) = range(42, 44)
-(AP_MENU, AP_FONT, AP_STYLE) = range(44, 47)
-(CS_MENU_PHOTO,) = range(47, 48)
-(BC_GET_MSG, BC_CONFIRM) = range(48, 50)
-(DC_SET_CHANNEL,) = range(50, 51)
-(LANG_MENU,) = range(51, 52)
-(ADD_EP_SELECT, ADD_EP_GET_FILE) = range(52, 54)
+(CA_GET_ID, CA_CONFIRM, CR_GET_ID, CR_CONFIRM) = range(30, 34)
+(AP_MENU, AP_FONT, AP_STYLE) = range(34, 37)
+(DC_SET_CHANNEL,) = range(37, 38)
+(LANG_MENU,) = range(38, 39)
+(ADD_EP_SELECT, ADD_EP_GET_FILE) = range(39, 41)
+(MM_MAIN, MM_GET_MSG) = range(41, 43)
 
 # ============================================================
 # ===                    CANCEL + BACK                     ===
@@ -501,18 +516,6 @@ async def back_to_user_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await show_user_menu(update, context, from_callback=True)
     return ConversationHandler.END
 
-async def back_to_donate_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    await donate_settings_menu(update, context)
-    return ConversationHandler.END
-
-async def back_to_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    await other_links_menu(update, context)
-    return ConversationHandler.END
-
 async def back_to_admin_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -549,10 +552,10 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE, from
             [InlineKeyboardButton("🔗 Other Links", callback_data="admin_menu_other_links"),
              InlineKeyboardButton("❤️ Donation", callback_data="admin_menu_donate_settings")],
             [InlineKeyboardButton("⏱️ Auto-Delete", callback_data="admin_set_delete_time"),
-             InlineKeyboardButton("🖼️ Photos", callback_data="admin_menu_update_photo")],
-            [InlineKeyboardButton("🎨 Appearance", callback_data="admin_menu_appearance"),
-             InlineKeyboardButton("📊 Stats", callback_data="admin_show_stats")],
-            [InlineKeyboardButton("🛠️ Admin Settings", callback_data="admin_menu_admin_settings")]
+             InlineKeyboardButton("🎨 Appearance", callback_data="admin_menu_appearance")],
+            [InlineKeyboardButton("⚙️ Bot Messages", callback_data="admin_menu_messages")],
+            [InlineKeyboardButton("🛠️ Admin Settings", callback_data="admin_menu_admin_settings")],
+            [InlineKeyboardButton("📊 Stats", callback_data="admin_show_stats")]
         ]
         text = await format_message(context, "admin_panel_main")
     else:
@@ -562,7 +565,7 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE, from
             [InlineKeyboardButton("✏️ Edit Name", callback_data="admin_edit_movie")],
             [InlineKeyboardButton("✍️ Post Generator", callback_data="admin_post_gen")],
             [InlineKeyboardButton("🔗 Gen Link", callback_data="admin_gen_link")],
-            [InlineKeyboardButton("📊 Stats", callback_data="admin_show_stats")],
+            [InlineKeyboardButton("📊 Stats", callback_data="admin_show_stats")]
         ]
         text = await format_message(context, "admin_panel_co")
 
@@ -837,9 +840,8 @@ async def add_series_get_episode_file(update: Update, context: ContextTypes.DEFA
             current_q[q] = file_id
             remaining = [x for x in ['480p', '720p', '1080p', '4K'] if x not in current_q]
             if remaining:
-                await update.message.reply_text(f"✅ {q} save ho gaya.\nAb <b>{remaining[0]}</b> bhejo ya /done", parse_mode=ParseMode.HTML)
+                await update.message.reply_text(f"✅ {q} save.\nAb <b>{remaining[0]}</b> bhejo ya /done", parse_mode=ParseMode.HTML)
             else:
-                # Episode complete
                 season = context.user_data['current_season']
                 episode = context.user_data['current_episode']
                 if season not in context.user_data['seasons']:
@@ -848,10 +850,7 @@ async def add_series_get_episode_file(update: Update, context: ContextTypes.DEFA
                 context.user_data['current_qualities'] = {}
                 context.user_data['current_episode'] += 1
                 await update.message.reply_text(
-                    f"✅ Season {season} Episode {episode} complete!\n\n"
-                    f"Agle episode ke liye file bhejo\n"
-                    f"ya /new_season\n"
-                    f"ya /done",
+                    f"✅ S{season}E{episode} complete!\n\nAgle episode ke liye file bhejo\nya /new_season\nya /done",
                     parse_mode=ParseMode.HTML
                 )
             return S_GET_EPISODE
@@ -1023,7 +1022,7 @@ async def add_episode_get_file(update: Update, context: ContextTypes.DEFAULT_TYP
             remaining = [x for x in ['480p', '720p', '1080p', '4K'] if x not in current_q]
             if remaining:
                 await update.message.reply_text(
-                    f"✅ {q} save ho gaya.\nAb <b>{remaining[0]}</b> bhejo ya /done",
+                    f"✅ {q} save.\nAb <b>{remaining[0]}</b> bhejo ya /done",
                     parse_mode=ParseMode.HTML
                 )
             else:
@@ -1268,7 +1267,6 @@ async def post_gen_get_short_link(update: Update, context: ContextTypes.DEFAULT_
     short_link = update.message.text.strip()
     context.user_data['short_link'] = short_link
 
-    # Caption banao
     title = context.user_data.get('post_title', '')
     desc = context.user_data.get('post_description', '')
     genre = context.user_data.get('post_genre', '')
@@ -1282,7 +1280,6 @@ async def post_gen_get_short_link(update: Update, context: ContextTypes.DEFAULT_
 
     context.user_data['post_caption_raw'] = caption
 
-    # Default Channel check
     config = await get_config()
     default_chat = config.get("default_publish_chat")
 
@@ -1308,9 +1305,9 @@ async def show_post_preview(update: Update, context: ContextTypes.DEFAULT_TYPE):
     config = await get_config()
     links = config.get('links', {})
     bot_username = (await context.bot.get_me()).username
-
-    # Expandable blockquote apply karo agar ON hai
     appearance = config.get("appearance", {})
+
+    # Expandable blockquote
     if appearance.get("quote_enabled") and "<blockquote" not in caption_raw.lower():
         caption_raw = f"<blockquote expandable>{caption_raw}</blockquote>"
 
@@ -1390,7 +1387,7 @@ async def post_edit_title_start(update: Update, context: ContextTypes.DEFAULT_TY
 async def post_edit_title_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['post_title'] = update.message.text.strip()
     await rebuild_post_caption(context)
-    await update.message.reply_text("✅ Title update ho gaya (sirf is post ke liye).", parse_mode=ParseMode.HTML)
+    await update.message.reply_text("✅ Title update (sirf is post ke liye).", parse_mode=ParseMode.HTML)
     return await show_post_preview(update, context)
 
 async def post_edit_desc_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1403,7 +1400,7 @@ async def post_edit_desc_start(update: Update, context: ContextTypes.DEFAULT_TYP
 async def post_edit_desc_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['post_description'] = update.message.text.strip()
     await rebuild_post_caption(context)
-    await update.message.reply_text("✅ Description update ho gaya.", parse_mode=ParseMode.HTML)
+    await update.message.reply_text("✅ Description update.", parse_mode=ParseMode.HTML)
     return await show_post_preview(update, context)
 
 async def post_edit_genre_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1474,7 +1471,6 @@ async def post_publish(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bot_username = (await context.bot.get_me()).username
     appearance = config.get("appearance", {})
 
-    # Expandable blockquote
     if appearance.get("quote_enabled") and "<blockquote" not in caption_raw.lower():
         caption_raw = f"<blockquote expandable>{caption_raw}</blockquote>"
 
@@ -1585,8 +1581,6 @@ async def admin_settings_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
         [InlineKeyboardButton("➕ Add Co-Admin", callback_data="admin_add_co_admin")],
         [InlineKeyboardButton("🚫 Remove Co-Admin", callback_data="admin_remove_co_admin")],
         [InlineKeyboardButton("👥 List Co-Admins", callback_data="admin_list_co_admin")],
-        [InlineKeyboardButton("🚀 Custom Post", callback_data="admin_custom_post")],
-        [InlineKeyboardButton("📢 Broadcast", callback_data="admin_broadcast_start")],
         [InlineKeyboardButton("⬅️ Back", callback_data="admin_menu")]
     ]
     text = await format_message(context, "admin_menu_admin_settings")
@@ -1629,7 +1623,6 @@ async def set_default_channel_save(update: Update, context: ContextTypes.DEFAULT
         upsert=True
     )
     
-    # Verify save
     config = await get_config()
     saved = config.get("default_publish_chat")
     
@@ -1689,7 +1682,6 @@ async def set_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
         upsert=True
     )
     
-    # Refresh messages for new language
     defaults = await get_default_messages(lang)
     config_collection.update_one(
         {"_id": "bot_config"},
@@ -1744,11 +1736,7 @@ async def appearance_set_font(update: Update, context: ContextTypes.DEFAULT_TYPE
     keyboard = build_grid_keyboard(buttons, 2)
     keyboard.append([InlineKeyboardButton("⬅️ Back", callback_data="back_to_appearance")])
     
-    await query.edit_message_text(
-        "Font select karo:",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode=ParseMode.HTML
-    )
+    await query.edit_message_text("Font select karo:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
     return AP_FONT
 
 async def appearance_save_font(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1775,11 +1763,7 @@ async def appearance_set_style(update: Update, context: ContextTypes.DEFAULT_TYP
         ],
         [InlineKeyboardButton("⬅️ Back", callback_data="back_to_appearance")]
     ]
-    await query.edit_message_text(
-        "Style select karo:",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode=ParseMode.HTML
-    )
+    await query.edit_message_text("Style select karo:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
     return AP_STYLE
 
 async def appearance_save_style(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1958,7 +1942,117 @@ async def set_delete_time_save(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.message.reply_text(text, parse_mode=ParseMode.HTML)
         return CS_GET_DELETE_TIME
 
-print("✅ PART 4 LOADED - Default Channel + Language + Appearance + Links Ready")
+# ============================================================
+# ===                    CO-ADMIN                          ===
+# ============================================================
+async def add_co_admin_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    text = await format_message(context, "admin_co_admin_add_start")
+    await query.edit_message_text(text, parse_mode=ParseMode.HTML)
+    return CA_GET_ID
+
+async def add_co_admin_get_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        user_id = int(update.message.text.strip())
+    except:
+        await update.message.reply_text("Sirf number bhejo (User ID).", parse_mode=ParseMode.HTML)
+        return CA_GET_ID
+    
+    if user_id == ADMIN_ID:
+        await update.message.reply_text("Main Admin ko Co-Admin nahi bana sakte.", parse_mode=ParseMode.HTML)
+        return CA_GET_ID
+    
+    config = await get_config()
+    if user_id in config.get("co_admins", []):
+        await update.message.reply_text("Yeh user pehle se Co-Admin hai.", parse_mode=ParseMode.HTML)
+        return CA_GET_ID
+    
+    context.user_data['new_co_admin'] = user_id
+    text = f"User ID <code>{user_id}</code> ko Co-Admin banana hai?\n\nConfirm?"
+    keyboard = [
+        [InlineKeyboardButton("✅ Yes", callback_data="ca_confirm_yes")],
+        [InlineKeyboardButton("❌ No", callback_data="back_to_admin_settings")]
+    ]
+    await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+    return CA_CONFIRM
+
+async def add_co_admin_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user_id = context.user_data.get('new_co_admin')
+    
+    config_collection.update_one(
+        {"_id": "bot_config"},
+        {"$addToSet": {"co_admins": user_id}},
+        upsert=True
+    )
+    
+    text = await format_message(context, "admin_co_admin_add_success", {"user_id": user_id})
+    await query.edit_message_text(text, parse_mode=ParseMode.HTML)
+    context.user_data.clear()
+    await asyncio.sleep(1.5)
+    await admin_settings_menu(update, context)
+    return ConversationHandler.END
+
+async def remove_co_admin_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    config = await get_config()
+    co_admins = config.get("co_admins", [])
+    
+    if not co_admins:
+        text = await format_message(context, "admin_co_admin_list_none")
+        await query.edit_message_text(text, parse_mode=ParseMode.HTML)
+        await asyncio.sleep(1.5)
+        await admin_settings_menu(update, context)
+        return ConversationHandler.END
+    
+    buttons = [InlineKeyboardButton(str(uid), callback_data=f"cr_remove_{uid}") for uid in co_admins]
+    keyboard = build_grid_keyboard(buttons, 2)
+    keyboard.append([InlineKeyboardButton("⬅️ Back", callback_data="back_to_admin_settings")])
+    
+    text = await format_message(context, "admin_co_admin_remove_start")
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+    return CR_GET_ID
+
+async def remove_co_admin_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user_id = int(query.data.replace("cr_remove_", ""))
+    
+    config_collection.update_one(
+        {"_id": "bot_config"},
+        {"$pull": {"co_admins": user_id}}
+    )
+    
+    text = await format_message(context, "admin_co_admin_remove_success", {"user_id": user_id})
+    await query.edit_message_text(text, parse_mode=ParseMode.HTML)
+    await asyncio.sleep(1.5)
+    await admin_settings_menu(update, context)
+    return ConversationHandler.END
+
+async def list_co_admins(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    config = await get_config()
+    co_admins = config.get("co_admins", [])
+    
+    if not co_admins:
+        text = await format_message(context, "admin_co_admin_list_none")
+    else:
+        text = await format_message(context, "admin_co_admin_list_header")
+        for uid in co_admins:
+            text += f"• <code>{uid}</code>\n"
+    
+    await query.edit_message_text(
+        text,
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="back_to_admin_settings")]]),
+        parse_mode=ParseMode.HTML
+    )
+
 # ============================================================
 # ===                 USER SIDE + DOWNLOAD                 ===
 # ============================================================
@@ -2022,26 +2116,16 @@ async def show_user_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, fro
         await query.answer()
         try:
             if photo:
-                await context.bot.send_photo(
-                    user.id, photo=photo, caption=text,
-                    reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML
-                )
+                await context.bot.send_photo(user.id, photo=photo, caption=text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
             else:
-                await context.bot.send_message(
-                    user.id, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML
-                )
+                await context.bot.send_message(user.id, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
         except:
             pass
     else:
         if photo:
-            await update.message.reply_photo(
-                photo=photo, caption=text,
-                reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML
-            )
+            await update.message.reply_photo(photo=photo, caption=text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
         else:
-            await update.message.reply_text(
-                text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML
-            )
+            await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
 
 async def user_show_donate_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -2058,13 +2142,10 @@ async def user_show_donate_menu(update: Update, context: ContextTypes.DEFAULT_TY
     keyboard = [[InlineKeyboardButton("⬅️ Back", callback_data="user_back_menu")]]
     
     try:
-        await context.bot.send_photo(
-            query.from_user.id, photo=qr, caption=text,
-            reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML
-        )
+        await context.bot.send_photo(query.from_user.id, photo=qr, caption=text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
         await query.answer()
         context.job_queue.run_once(send_donate_thank_you, 60, chat_id=query.from_user.id)
-    except Exception as e:
+    except:
         await query.answer("Error", show_alert=True)
 
 async def handle_deep_link_donate(user, context):
@@ -2073,9 +2154,7 @@ async def handle_deep_link_donate(user, context):
     qr = config.get('donate_qr_id')
     
     if not qr:
-        await context.bot.send_message(
-            user.id, await format_message(context, "user_donate_qr_error"), parse_mode=ParseMode.HTML
-        )
+        await context.bot.send_message(user.id, await format_message(context, "user_donate_qr_error"), parse_mode=ParseMode.HTML)
         return
     
     text = await format_message(context, "user_donate_qr_text")
@@ -2103,7 +2182,7 @@ async def handle_deep_link_download(user, context, payload):
     try:
         await download_button_handler(DummyUpdate(user, payload), context)
     except Exception as e:
-        logger.error(f"Deep link download fail: {e}")
+        logger.error(f"Deep link fail: {e}")
 
 async def download_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -2120,9 +2199,7 @@ async def download_button_handler(update: Update, context: ContextTypes.DEFAULT_
 
     checking = None
     try:
-        checking = await context.bot.send_message(
-            user_id, await format_message(context, "user_dl_fetching"), parse_mode=ParseMode.HTML
-        )
+        checking = await context.bot.send_message(user_id, await format_message(context, "user_dl_fetching"), parse_mode=ParseMode.HTML)
     except:
         return
 
@@ -2136,9 +2213,7 @@ async def download_button_handler(update: Update, context: ContextTypes.DEFAULT_
         doc = movies_collection.find_one({"name": key})
 
     if not doc:
-        await context.bot.send_message(
-            user_id, await format_message(context, "user_dl_movie_not_found"), parse_mode=ParseMode.HTML
-        )
+        await context.bot.send_message(user_id, await format_message(context, "user_dl_movie_not_found"), parse_mode=ParseMode.HTML)
         if checking:
             try: await context.bot.delete_message(user_id, checking.message_id)
             except: pass
@@ -2162,10 +2237,7 @@ async def download_button_handler(update: Update, context: ContextTypes.DEFAULT_
             file_id = doc.get("qualities", {}).get(quality)
 
         if not file_id:
-            await context.bot.send_message(
-                user_id, await format_message(context, "user_dl_file_error", {"quality": quality}),
-                parse_mode=ParseMode.HTML
-            )
+            await context.bot.send_message(user_id, await format_message(context, "user_dl_file_error", {"quality": quality}), parse_mode=ParseMode.HTML)
             return
 
         warning = await format_message(context, "file_warning", {"minutes": max(1, delete_time // 60)})
@@ -2175,17 +2247,11 @@ async def download_button_handler(update: Update, context: ContextTypes.DEFAULT_
         caption = await apply_font_formatting(caption, appearance)
 
         try:
-            sent = await context.bot.send_video(
-                user_id, video=file_id, caption=caption,
-                parse_mode=ParseMode.HTML, thumbnail=doc.get("poster_id")
-            )
+            sent = await context.bot.send_video(user_id, video=file_id, caption=caption, parse_mode=ParseMode.HTML, thumbnail=doc.get("poster_id"))
             asyncio.create_task(delete_message_later(context.bot, user_id, sent.message_id, delete_time))
         except Exception as e:
             err_key = "user_dl_blocked_error" if "blocked" in str(e).lower() else "user_dl_file_error"
-            await context.bot.send_message(
-                user_id, await format_message(context, err_key, {"quality": quality}),
-                parse_mode=ParseMode.HTML
-            )
+            await context.bot.send_message(user_id, await format_message(context, err_key, {"quality": quality}), parse_mode=ParseMode.HTML)
         return
 
     # Quality selection
@@ -2199,9 +2265,7 @@ async def download_button_handler(update: Update, context: ContextTypes.DEFAULT_
         if checking:
             try: await context.bot.delete_message(user_id, checking.message_id)
             except: pass
-        await context.bot.send_message(
-            user_id, await format_message(context, "user_dl_qualities_not_found"), parse_mode=ParseMode.HTML
-        )
+        await context.bot.send_message(user_id, await format_message(context, "user_dl_qualities_not_found"), parse_mode=ParseMode.HTML)
         return
 
     buttons = [InlineKeyboardButton(q, callback_data=f"dl{mid}__{q}") for q in ['480p', '720p', '1080p', '4K'] if q in qualities]
@@ -2215,10 +2279,7 @@ async def download_button_handler(update: Update, context: ContextTypes.DEFAULT_
         except: pass
 
     try:
-        sent = await context.bot.send_photo(
-            user_id, photo=doc['poster_id'], caption=msg,
-            reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML
-        )
+        sent = await context.bot.send_photo(user_id, photo=doc['poster_id'], caption=msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
         asyncio.create_task(delete_message_later(context.bot, user_id, sent.message_id, delete_time))
     except:
         pass
@@ -2433,7 +2494,7 @@ def main():
     )
 
     set_links_conv = ConversationHandler(
-        entry_points=[CallbackQueryHandler(set_links_start, pattern="^admin_set_")],
+        entry_points=[CallbackQueryHandler(set_links_start, pattern="^admin_set_(backup|download|help)_link$")],
         states={
             CL_GET_LINK: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, get_link),
@@ -2486,6 +2547,25 @@ def main():
         allow_reentry=True
     )
 
+    co_admin_add_conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(add_co_admin_start, pattern="^admin_add_co_admin$")],
+        states={
+            CA_GET_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_co_admin_get_id)],
+            CA_CONFIRM: [CallbackQueryHandler(add_co_admin_confirm, pattern="^ca_confirm_yes$")]
+        },
+        fallbacks=fallbacks,
+        allow_reentry=True
+    )
+
+    co_admin_remove_conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(remove_co_admin_start, pattern="^admin_remove_co_admin$")],
+        states={
+            CR_GET_ID: [CallbackQueryHandler(remove_co_admin_confirm, pattern="^cr_remove_")]
+        },
+        fallbacks=fallbacks,
+        allow_reentry=True
+    )
+
     # ========== REGISTER HANDLERS ==========
     bot_app.add_handler(CommandHandler("start", start_command))
     bot_app.add_handler(CommandHandler("user", user_command))
@@ -2504,6 +2584,7 @@ def main():
     bot_app.add_handler(CallbackQueryHandler(user_show_donate_menu, pattern="^user_show_donate_menu$"))
     bot_app.add_handler(CallbackQueryHandler(back_to_user_menu, pattern="^user_back_menu$"))
     bot_app.add_handler(CallbackQueryHandler(show_stats, pattern="^admin_show_stats$"))
+    bot_app.add_handler(CallbackQueryHandler(list_co_admins, pattern="^admin_list_co_admin$"))
     bot_app.add_handler(CallbackQueryHandler(download_button_handler, pattern="^dl"))
 
     bot_app.add_handler(add_movie_conv)
@@ -2519,6 +2600,8 @@ def main():
     bot_app.add_handler(default_ch_conv)
     bot_app.add_handler(lang_conv)
     bot_app.add_handler(appearance_conv)
+    bot_app.add_handler(co_admin_add_conv)
+    bot_app.add_handler(co_admin_remove_conv)
 
     bot_app.add_error_handler(error_handler)
 
