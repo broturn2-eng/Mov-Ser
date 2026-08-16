@@ -1246,18 +1246,20 @@ async def add_season_show_anime_list(update: Update, context: ContextTypes.DEFAU
         
     context.user_data['current_page'] = page 
     
+    # Sirf Series (movies mein season nahi hota)
     animes, keyboard = await build_paginated_keyboard(
         collection=animes_collection,
         page=page,
         page_callback_prefix="addseason_page_",
         item_callback_prefix="season_anime_",
-        back_callback="back_to_add_content"
+        back_callback="back_to_add_content",
+        filter_query={"$or": [{"type": "series"}, {"type": {"$exists": False}}]}
     )
     
     if not animes and page == 0:
         text = await format_message(context, "admin_add_season_no_anime")
     else:
-        text = await format_message(context, "admin_add_season_select_anime", {"page": page + 1}) # NAYA: Text DB se aayega
+        text = await format_message(context, "admin_add_season_select_anime", {"page": page + 1})
     
     await query.edit_message_text(text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
     return S_GET_ANIME
@@ -1503,12 +1505,14 @@ async def add_episode_show_anime_list(update: Update, context: ContextTypes.DEFA
         
     context.user_data['current_page'] = page 
         
+    # Sirf Series
     animes, keyboard = await build_paginated_keyboard(
         collection=animes_collection,
         page=page,
         page_callback_prefix="addep_page_",
         item_callback_prefix="ep_anime_",
-        back_callback="back_to_add_content"
+        back_callback="back_to_add_content",
+        filter_query={"$or": [{"type": "series"}, {"type": {"$exists": False}}]}
     )
     
     if not animes and page == 0:
@@ -2776,19 +2780,34 @@ async def post_gen_show_anime_list(update: Update, context: ContextTypes.DEFAULT
         await query.answer()
 
     context.user_data['current_page'] = page 
+    
+    post_type = context.user_data.get('post_type', '')
+    
+    # Movies aur Series alag lists
+    if post_type == 'post_gen_movie':
+        filter_query = {"type": "movie"}
+        list_label = "Movie"
+    elif post_type in ('post_gen_anime', 'post_gen_season', 'post_gen_episode'):
+        # Series only (type series OR no type field for old data)
+        filter_query = {"$or": [{"type": "series"}, {"type": {"$exists": False}}]}
+        list_label = "Series"
+    else:
+        filter_query = {}
+        list_label = "Series/Movie"
         
     animes, keyboard = await build_paginated_keyboard(
         collection=animes_collection,
         page=page,
         page_callback_prefix="postgen_page_",
         item_callback_prefix="post_anime_",
-        back_callback="admin_post_gen" 
+        back_callback="admin_post_gen",
+        filter_query=filter_query
     )
     
     if not animes and page == 0:
-        text = await format_message(context, "admin_post_gen_no_anime")
+        text = f"❌ Abhi koi <b>{list_label}</b> add nahi hua hai."
     else:
-        text = await format_message(context, "admin_post_gen_select_anime", {"page": page + 1}) # NAYA: Text DB se
+        text = f"Kaunsa <b>{list_label}</b> select karna hai?\n\n(Page {page + 1})"
 
     await query.edit_message_text(text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
     return PG_GET_ANIME
@@ -3274,7 +3293,14 @@ async def post_edit_title_save(update: Update, context: ContextTypes.DEFAULT_TYP
 async def post_edit_desc_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    await _safe_edit_preview(query, "✏️ Naya <b>Description / Synopsis</b> bhejo (sirf is post ke liye):\n\n/cancel to cancel")
+    current_body = context.user_data.get('post_edit_body', '') or context.user_data.get('post_caption_formatted', '')
+    # Truncate if too long for message
+    preview_current = current_body[:800] + ("..." if len(current_body) > 800 else "")
+    msg = "✏️ Naya <b>Description / Synopsis</b> bhejo (sirf is post ke liye):\n\n"
+    if preview_current:
+        msg += f"<b>Current:</b>\n<code>{preview_current}</code>\n\n"
+    msg += "/cancel to cancel"
+    await _safe_edit_preview(query, msg)
     return PG_EDIT_DESC
 
 async def post_edit_desc_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
