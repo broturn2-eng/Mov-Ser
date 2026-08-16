@@ -3183,8 +3183,10 @@ async def post_gen_get_short_link(update: Update, context: ContextTypes.DEFAULT_
         context.user_data['post_edit_title'] = title_match.group(1).strip()
         rest = caption_formatted[title_match.end():].strip().lstrip('\n')
     else:
-        context.user_data['post_edit_title'] = context.user_data.get('anime_name', '')
+        context.user_data['post_edit_title'] = context.user_data.get('anime_name', '') or ''
         rest = caption_formatted
+    
+    title_text = context.user_data.get('post_edit_title', '') or ''
     
     # Footer = last line with Download / Press On
     lines = rest.split('\n')
@@ -3194,12 +3196,24 @@ async def post_gen_get_short_link(update: Update, context: ContextTypes.DEFAULT_
             footer_idx = i
             break
     if footer_idx is not None:
-        context.user_data['post_edit_footer'] = '\n'.join(lines[footer_idx:]).strip()
-        context.user_data['post_edit_middle'] = '\n'.join(lines[:footer_idx]).strip()
+        footer = '\n'.join(lines[footer_idx:]).strip()
+        middle = '\n'.join(lines[:footer_idx]).strip()
     else:
-        context.user_data['post_edit_footer'] = ''
-        context.user_data['post_edit_middle'] = rest
+        footer = ''
+        middle = rest
+    
+    # Title blockquote middle mein rehne do — outer bold alag se tabhi lage jab middle mein title na ho
+    # (rebuild function handle karega). Yahan sirf empty lines clean.
+    if middle:
+        middle = _re.sub(r'\n{3,}', '\n\n', middle).strip()
+    
+    context.user_data['post_edit_footer'] = footer
+    context.user_data['post_edit_middle'] = middle
     context.user_data['post_is_quoted'] = False
+    
+    # Rebuild caption without double title
+    caption_formatted = await _rebuild_post_caption(context)
+    context.user_data['post_caption_formatted'] = caption_formatted
     
     # === PREVIEW ===
     config = await get_config()
@@ -3344,14 +3358,19 @@ def _get_preview_keyboard():
     ]
 
 async def _rebuild_post_caption(context):
-    """Title + middle + footer se caption banata hai"""
+    """Title + middle + footer se caption banata hai — double title nahi"""
+    import re as _re
     title = context.user_data.get('post_edit_title', '') or ''
     middle = context.user_data.get('post_edit_middle', '') or ''
     footer = context.user_data.get('post_edit_footer', '') or ''
     is_quoted = context.user_data.get('post_is_quoted', False)
     
+    # Agar middle mein title pehle se hai (blockquote/text), to outer bold title mat lagao
+    middle_plain = _re.sub(r'<[^>]+>', '', middle).lower() if middle else ''
+    title_already_in_middle = bool(title and title.lower() in middle_plain)
+    
     parts = []
-    if title:
+    if title and not title_already_in_middle:
         parts.append(f"<b>{title}</b>")
     if middle:
         parts.append(middle)
