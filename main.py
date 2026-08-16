@@ -926,6 +926,7 @@ async def _update_anime_timestamp(anime_name: str):
 (DPC_GET_CHAT,) = range(104, 105)
 (PROMO_GET_VALUE,) = range(105, 106)
 (VERIFY_VIDEO,) = range(106, 107)
+(PBTN_GET_TEXT,) = range(107, 108)
 
 
 # --- NAYA: Global Cancel Function ---
@@ -3067,12 +3068,13 @@ async def generate_post_ask_chat(update: Update, context: ContextTypes.DEFAULT_T
         btn_donate = InlineKeyboardButton("Donate", url=donate_url)
         btn_help = InlineKeyboardButton("🆘 Help", url=help_url)
         
-        # Verify / How to download button
+        # Verify / How to Verify button
+        t_verify = config.get("btn_text_verify") or "How to Verify"
         verify_url = links.get('verify') or config.get('verify_url')
         if verify_url:
-            btn_verify = InlineKeyboardButton("✅ Verify", url=verify_url)
+            btn_verify = InlineKeyboardButton(t_verify, url=verify_url)
         else:
-            btn_verify = InlineKeyboardButton("✅ Verify", callback_data="user_verify_howto")
+            btn_verify = InlineKeyboardButton(t_verify, callback_data="user_verify_howto")
 
         context.user_data['post_caption_raw'] = caption
         context.user_data['post_poster_id'] = poster_id 
@@ -3080,6 +3082,7 @@ async def generate_post_ask_chat(update: Update, context: ContextTypes.DEFAULT_T
         context.user_data['btn_donate'] = btn_donate
         context.user_data['btn_help'] = btn_help
         context.user_data['btn_verify'] = btn_verify
+        context.user_data['bot_username'] = bot_username
         context.user_data['is_episode_post'] = context.user_data.get('is_episode_post', False) 
         
         text = await format_message(context, "admin_post_gen_ask_shortlink", {
@@ -3122,25 +3125,42 @@ async def post_gen_get_short_link(update: Update, context: ContextTypes.DEFAULT_
     btn_verify = context.user_data.get('btn_verify')
     is_episode_post = context.user_data.get('is_episode_post', False)
     
-    # 1 bada Download (full row) + 1 chota Verify
-    btn_download = InlineKeyboardButton("⬇️ DOWNLOAD", url=short_link_url)
-    if not btn_verify:
-        btn_verify = InlineKeyboardButton("✅ Verify", callback_data="user_verify_howto")
+    # Button texts (admin editable)
+    config = await get_config()
+    t_backup = config.get("btn_text_backup") or "Backup"
+    t_verify = config.get("btn_text_verify") or "How to Verify"
+    t_donate = config.get("btn_text_donate") or "Donate"
+    t_download = config.get("btn_text_download") or "⬇️ DOWNLOAD"
+    
+    btn_download = InlineKeyboardButton(t_download, url=short_link_url)
+    
+    # Rebuild backup/donate with custom text
+    links = config.get("links", {})
+    backup_url = links.get("backup") or "https://t.me/"
+    donate_url = f"https://t.me/{context.user_data.get('bot_username', 'bot')}?start=donate"
+    btn_backup = InlineKeyboardButton(t_backup, url=backup_url)
+    btn_donate = InlineKeyboardButton(t_donate, url=donate_url)
+    
+    verify_url = links.get("verify") or config.get("verify_url")
+    if verify_url:
+        btn_verify = InlineKeyboardButton(t_verify, url=verify_url)
     else:
-        if getattr(btn_verify, 'url', None):
-            btn_verify = InlineKeyboardButton("✅ Verify", url=btn_verify.url)
-        else:
-            btn_verify = InlineKeyboardButton("✅ Verify", callback_data="user_verify_howto")
+        btn_verify = InlineKeyboardButton(t_verify, callback_data="user_verify_howto")
     
     if is_episode_post:
         keyboard = [
-            [btn_download],              # BARA full width
-            [btn_verify, btn_donate],
+            [btn_verify],
+            [btn_donate],
+            [btn_download],
         ]
     else:
+        # Line1: Backup | How to Verify
+        # Line2: Donate
+        # Line3: Download
         keyboard = [
-            [btn_backup, btn_verify, btn_donate],  # Verify beech mein
-            [btn_download],                        # BARA full width
+            [btn_backup, btn_verify],
+            [btn_donate],
+            [btn_download],
         ]
     
     context.user_data['post_keyboard'] = InlineKeyboardMarkup(keyboard)
@@ -4562,6 +4582,7 @@ async def admin_settings_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
         [InlineKeyboardButton("👥 List Co-Admins", callback_data="admin_list_co_admin")],
         [InlineKeyboardButton(f"📍 Default Publish Chat: {default_chat}", callback_data="admin_set_default_chat")],
         [InlineKeyboardButton("📢 Promo Channels (Thank You)", callback_data="admin_promo_channels")],
+        [InlineKeyboardButton("🔘 Post Buttons Text", callback_data="admin_post_buttons")],
         [InlineKeyboardButton("🌐 Bot Language", callback_data="admin_set_language")],
         [InlineKeyboardButton("🚀 Custom Post Generator", callback_data="admin_custom_post")],
         [InlineKeyboardButton("📢 Broadcast Message", callback_data="admin_broadcast_start")],
@@ -4639,6 +4660,74 @@ LANG_LABELS = {
     "bengali": "বাংলা",
     "arabic": "العربية"
 }
+
+
+# ============================================
+# ===     POST BUTTONS TEXT EDITOR         ===
+# ============================================
+async def post_buttons_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    config = await get_config()
+    t_backup = config.get("btn_text_backup") or "Backup"
+    t_verify = config.get("btn_text_verify") or "How to Verify"
+    t_donate = config.get("btn_text_donate") or "Donate"
+    t_download = config.get("btn_text_download") or "⬇️ DOWNLOAD"
+    verify_link = config.get("links", {}).get("verify") or "Not Set"
+    has_video = "✅" if config.get("verify_video_id") else "❌"
+    
+    text = (
+        f"🔘 <b>Post Buttons</b>\n\n"
+        f"Layout:\n"
+        f"<code>[ {t_backup} ] [ {t_verify} ]</code>\n"
+        f"<code>[ {t_donate} ]</code>\n"
+        f"<code>[ {t_download} ]</code>\n\n"
+        f"<b>How to Verify:</b>\n"
+        f"Link: <code>{verify_link}</code>\n"
+        f"Video: {has_video}\n\n"
+        f"Button text ya verify guide set karo."
+    )
+    keyboard = [
+        [InlineKeyboardButton(f"✏️ Backup: {t_backup[:15]}", callback_data="pbtn_backup")],
+        [InlineKeyboardButton(f"✏️ How to Verify: {t_verify[:15]}", callback_data="pbtn_verify")],
+        [InlineKeyboardButton(f"✏️ Donate: {t_donate[:15]}", callback_data="pbtn_donate")],
+        [InlineKeyboardButton(f"✏️ Download: {t_download[:15]}", callback_data="pbtn_download")],
+        [InlineKeyboardButton("🔗 Set Verify Link", callback_data="admin_set_verify_link")],
+        [InlineKeyboardButton("🎬 Set Verify How-To Video", callback_data="admin_set_verify_video")],
+        [InlineKeyboardButton("⬅️ Back", callback_data="admin_menu_admin_settings")]
+    ]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+
+async def post_btn_text_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    data = query.data  # pbtn_backup / pbtn_verify / etc
+    key_map = {
+        "pbtn_backup": ("btn_text_backup", "Backup"),
+        "pbtn_verify": ("btn_text_verify", "How to Verify"),
+        "pbtn_donate": ("btn_text_donate", "Donate"),
+        "pbtn_download": ("btn_text_download", "Download"),
+    }
+    conf_key, label = key_map.get(data, (None, None))
+    if not conf_key:
+        return ConversationHandler.END
+    context.user_data['pbtn_key'] = conf_key
+    await query.edit_message_text(
+        f"✏️ <b>{label}</b> button ka naya text bhejo:\n\n/cancel - Cancel",
+        parse_mode=ParseMode.HTML
+    )
+    return PBTN_GET_TEXT
+
+async def post_btn_text_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    key = context.user_data.get('pbtn_key')
+    text = update.message.text.strip()
+    if not key:
+        await update.message.reply_text("Error.")
+        return ConversationHandler.END
+    config_collection.update_one({"_id": "bot_config"}, {"$set": {key: text}}, upsert=True)
+    await update.message.reply_text(f"✅ Button text saved:\n<code>{text}</code>", parse_mode=ParseMode.HTML)
+    context.user_data.clear()
+    return ConversationHandler.END
 
 async def language_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -6167,6 +6256,17 @@ def main():
     bot_app.add_handler(promo_conv)  # NAYA: Promo channels
     bot_app.add_handler(CallbackQueryHandler(promo_channels_menu, pattern="^admin_promo_channels$"))
     bot_app.add_handler(CallbackQueryHandler(language_menu, pattern="^admin_set_language$"))
+    bot_app.add_handler(CallbackQueryHandler(post_buttons_menu, pattern="^admin_post_buttons$"))
+    
+    pbtn_conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(post_btn_text_start, pattern="^pbtn_")],
+        states={
+            PBTN_GET_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, post_btn_text_save)]
+        },
+        fallbacks=global_fallbacks + admin_menu_fallback,
+        allow_reentry=True
+    )
+    bot_app.add_handler(pbtn_conv)
     bot_app.add_handler(CallbackQueryHandler(language_set, pattern="^lang_"))
     bot_app.add_handler(CallbackQueryHandler(user_verify_howto, pattern="^user_verify_howto$"))
     
