@@ -329,10 +329,15 @@ def _format_wait(seconds: int) -> str:
     return f"{s}s"
 
 
+async def _refresh_btn_text():
+    config = await get_config()
+    return config.get("btn_text_refresh_timer") or "🔄 Refresh Timer"
+
 async def send_request_limit_msg(update_or_user, context, limit_msg: str, user_id: int = None):
     """Limit / cooldown message + Refresh button"""
+    rtxt = await _refresh_btn_text()
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔄 Refresh Timer", callback_data="request_timer_refresh")]
+        [InlineKeyboardButton(rtxt, callback_data="request_timer_refresh")]
     ])
     if hasattr(update_or_user, "message") and update_or_user.message:
         await update_or_user.message.reply_text(limit_msg, reply_markup=keyboard, parse_mode=ParseMode.HTML)
@@ -346,14 +351,77 @@ async def send_request_limit_msg(update_or_user, context, limit_msg: str, user_i
         uid = user_id or (update_or_user.id if hasattr(update_or_user, "id") else update_or_user)
         await context.bot.send_message(uid, limit_msg, reply_markup=keyboard, parse_mode=ParseMode.HTML)
 
+
+
+async def thankyou_timer_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer("Refreshing...")
+    from datetime import datetime
+    user_id = query.from_user.id
+    doc = db['user_delete_timers'].find_one({"user_id": user_id, "type": "thankyou"})
+    rtxt = await _refresh_btn_text()
+    # Keep existing keyboard structure roughly
+    config = await get_config()
+    keyboard = []
+    row = []
+    p1, p2 = config.get("promo_channel_1"), config.get("promo_channel_2")
+    b1 = config.get("promo_btn1_text") or "📢 Join Channel"
+    b2 = config.get("promo_btn2_text") or "📢 Join Channel 2"
+    if p1: row.append(InlineKeyboardButton(b1, url=p1))
+    if p2: row.append(InlineKeyboardButton(b2, url=p2))
+    if row: keyboard.append(row)
+    keyboard.append([InlineKeyboardButton(rtxt, callback_data="thankyou_timer_refresh")])
+    msg = config.get("promo_thank_you_msg") or "🙏 <b>Thank you for your time and consideration!</b>"
+    if not doc or not doc.get("deadline"):
+        await query.edit_message_text(msg + "\n\n✅ Timer over.", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+        return
+    left = int((doc["deadline"] - datetime.utcnow()).total_seconds())
+    if left <= 0:
+        await query.edit_message_text(msg + "\n\n✅ Timer over.", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+        return
+    h, m, s = left // 3600, (left % 3600) // 60, left % 60
+    tstr = f"{h}h {m}m {s}s" if h else (f"{m}m {s}s" if m else f"{s}s")
+    await query.edit_message_text(
+        f"{msg}\n\n⏳ <i>This message auto-deletes in <b>{tstr}</b></i>",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode=ParseMode.HTML
+    )
+
+async def file_timer_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Refresh remaining auto-delete time for files"""
+    query = update.callback_query
+    await query.answer("Refreshing...")
+    from datetime import datetime
+    user_id = query.from_user.id
+    doc = db['user_delete_timers'].find_one({"user_id": user_id})
+    rtxt = await _refresh_btn_text()
+    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(rtxt, callback_data="file_timer_refresh")]])
+    if not doc or not doc.get("deadline"):
+        await query.edit_message_text("✅ No active file timer (already deleted or none).", reply_markup=keyboard)
+        return
+    deadline = doc["deadline"]
+    now = datetime.utcnow()
+    left = int((deadline - now).total_seconds())
+    if left <= 0:
+        await query.edit_message_text("✅ Timer over — files should be deleted.", reply_markup=keyboard)
+        return
+    h, m, s = left // 3600, (left % 3600) // 60, left % 60
+    tstr = f"{h}h {m}m {s}s" if h else (f"{m}m {s}s" if m else f"{s}s")
+    await query.edit_message_text(
+        f"⏳ <b>Files auto-delete in:</b> <code>{tstr}</code>\n\nRefresh dabake remaining time dekho.",
+        parse_mode=ParseMode.HTML,
+        reply_markup=keyboard
+    )
+
 async def request_timer_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Refresh button - show updated remaining time"""
     query = update.callback_query
     await query.answer("Refreshing...")
     user_id = query.from_user.id
     allowed, remaining, limit_msg = await check_request_limit(user_id)
+    rtxt = await _refresh_btn_text()
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔄 Refresh Timer", callback_data="request_timer_refresh")]
+        [InlineKeyboardButton(rtxt, callback_data="request_timer_refresh")]
     ])
     if allowed:
         text = (
@@ -574,7 +642,7 @@ LANGUAGE_PACKS = {
         "user_dl_select_season": "<b>{anime_name}</b>\n\n<f>Select season:</f>",
         "user_dl_select_episode": "<b>{anime_name}</b> | <b>Season {season_name}</b>\n\n<f>Select episode:</f>",
         "user_dl_sending_files": "✅ <b>{anime_name}</b> | <b>S{season_name}</b> | <b>E{ep_num}</b>\n\n<f>Sending all your files...</f>",
-        "file_warning": "⚠️ <b><f>This file will auto-delete in {minutes} minute(s).</f></b>",
+        "file_warning": "⚠️ <b><f>This file will auto-delete in {time}</f></b> ({minutes} min).",
     },
     "hindi": {
         "admin_panel_main": "👑 <b><f>नमस्ते, एडमिन!</f></b> 👑\n<f>आपका कंट्रोल पैनल तैयार है।</f>",
@@ -659,7 +727,7 @@ async def get_default_messages():
         "user_dl_sending_files": "✅ <b>{anime_name}</b> | <b>S{season_name}</b> | <b>E{ep_num}</b>\n\n<f>Aapke saare files bhej raha hoon...</f>",
         "user_dl_select_episode": "<b>{anime_name}</b> | <b>Season {season_name}</b>\n\n<f>Episode select karein:</f>",
         "user_dl_select_season": "<b>{anime_name}</b>\n\n<f>Season select karein:</f>",
-        "file_warning": "⚠️ <b><f>Yeh file {minutes} minute(s) mein automatically delete ho jaayegi.</f></b>",
+        "file_warning": "⚠️ <b><f>Yeh file {time} mein auto-delete ho jaayegi.</f></b>",
         "user_dl_fetching": "⏳ <f>Fetching files...</f>",
 
         # === General User ===
@@ -3352,6 +3420,7 @@ async def generate_post_ask_chat(update: Update, context: ContextTypes.DEFAULT_T
         context.user_data['btn_help'] = btn_help
         context.user_data['btn_verify'] = btn_verify
         context.user_data['bot_username'] = bot_username
+        context.user_data['original_download_url'] = original_download_url
         context.user_data['is_episode_post'] = context.user_data.get('is_episode_post', False) 
         
         text = await format_message(context, "admin_post_gen_ask_shortlink", {
@@ -3384,7 +3453,23 @@ async def generate_post_ask_chat(update: Update, context: ContextTypes.DEFAULT_T
         return ConversationHandler.END
         
 async def post_gen_get_short_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    short_link_url = update.message.text
+    short_link_url = (update.message.text or "").strip()
+    # Remove accidental markdown/spaces
+    short_link_url = short_link_url.strip("<> \"'")
+    original = context.user_data.get('original_download_url') or ""
+    
+    # Auto-add https:// if missing (for short links like bit.ly/xxx)
+    if short_link_url and not short_link_url.lower().startswith(("http://", "https://", "tg://", "skip", "/skip", "-")):
+        if "." in short_link_url and " " not in short_link_url:
+            short_link_url = "https://" + short_link_url.lstrip("/")
+    
+    # Agar short link invalid / skip / same empty -> original use
+    if (not short_link_url or short_link_url.lower() in ("skip", "/skip", "-")
+        or not (short_link_url.startswith("http://") or short_link_url.startswith("https://") or short_link_url.startswith("tg://"))):
+        short_link_url = original or short_link_url
+        if not (short_link_url or "").startswith("http"):
+            await update.message.reply_text("❌ Valid link bhejo (https://...) ya original link copy karke bhejo.")
+            return PG_GET_SHORT_LINK
     
     caption_raw = context.user_data['post_caption_raw']
     poster_id = context.user_data['post_poster_id']
@@ -3402,15 +3487,21 @@ async def post_gen_get_short_link(update: Update, context: ContextTypes.DEFAULT_
     t_request = config.get("btn_text_request") or "Request a Movie"
     t_download = config.get("btn_text_download") or "⬇️ DOWNLOAD"
     
-    bot_uname = context.user_data.get('bot_username', 'bot')
+    # ALWAYS real bot username (never fallback "bot")
+    try:
+        bot_uname = (await context.bot.get_me()).username
+    except Exception:
+        bot_uname = context.user_data.get('bot_username') or ""
+    if not bot_uname:
+        await update.message.reply_text("❌ Bot username nahi mila. /start se bot restart karke try karo.")
+        return ConversationHandler.END
+    context.user_data['bot_username'] = bot_uname
     links = config.get("links", {})
     
-    # All URL buttons that open bot or external links
     backup_url = links.get("backup") or f"https://t.me/{bot_uname}"
     donate_url = f"https://t.me/{bot_uname}?start=donate"
-    # How to Verify → always open bot with start=verify
     verify_bot_url = f"https://t.me/{bot_uname}?start=verify"
-    # Request a Movie → ALWAYS open bot for in-bot request flow
+    # Request ALWAYS deep-link into bot /request flow
     request_url = f"https://t.me/{bot_uname}?start=request"
     
     btn_backup = InlineKeyboardButton(t_backup, url=backup_url)
@@ -5247,6 +5338,7 @@ async def post_buttons_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton(f"✏️ Donate: {t_donate[:15]}", callback_data="pbtn_donate")],
         [InlineKeyboardButton(f"✏️ Request: {t_request[:15]}", callback_data="pbtn_request")],
         [InlineKeyboardButton(f"✏️ Download: {t_download[:15]}", callback_data="pbtn_download")],
+        [InlineKeyboardButton("✏️ Refresh Timer Button Text", callback_data="pbtn_refresh")],
         [InlineKeyboardButton("🔗 Set Verify Link", callback_data="admin_set_verify_link")],
         [InlineKeyboardButton("🎬 Set Verify How-To Video", callback_data="admin_set_verify_video")],
         [InlineKeyboardButton("🎬 Set Request Link", callback_data="admin_set_request_link")],
@@ -5407,6 +5499,7 @@ async def post_btn_text_start(update: Update, context: ContextTypes.DEFAULT_TYPE
         "pbtn_donate": ("btn_text_donate", "Donate"),
         "pbtn_request": ("btn_text_request", "Request a Movie"),
         "pbtn_download": ("btn_text_download", "Download"),
+        "pbtn_refresh": ("btn_text_refresh_timer", "Refresh Timer"),
     }
     conf_key, label = key_map.get(data, (None, None))
     if not conf_key:
@@ -5470,13 +5563,15 @@ async def promo_channels_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
     p1 = config.get("promo_channel_1") or "Not Set"
     p2 = config.get("promo_channel_2") or "Not Set"
     thank_msg = config.get("promo_thank_you_msg") or "🙏 Thank you for your time and consideration!"
+    thank_secs = int(config.get("promo_thank_you_delete_seconds") or 120)
     text = (
         f"📢 <b>Promo Channels (After Download)</b>\n\n"
-        f"Download complete hone ke baad user ko Thank You message + 2 Join buttons milenge.\n\n"
+        f"Download complete hone ke baad user ko Thank You + 2 Join buttons.\n\n"
         f"<b>Channel 1:</b> <code>{p1}</code>\n"
         f"<b>Channel 2:</b> <code>{p2}</code>\n"
-        f"<b>Message:</b> {thank_msg}\n\n"
-        f"Links set karo for promotion."
+        f"<b>Message:</b> {thank_msg}\n"
+        f"<b>Thank You delete timer:</b> {thank_secs}s\n\n"
+        f"Links / timer set karo."
     )
     b1 = config.get("promo_btn1_text") or "Join Channel"
     b2 = config.get("promo_btn2_text") or "Join Channel 2"
@@ -5486,6 +5581,7 @@ async def promo_channels_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
         [InlineKeyboardButton(f"✏️ Button 1 Text: {b1[:20]}", callback_data="promo_set_btn1")],
         [InlineKeyboardButton(f"✏️ Button 2 Text: {b2[:20]}", callback_data="promo_set_btn2")],
         [InlineKeyboardButton("✏️ Edit Thank You Message", callback_data="promo_set_msg")],
+        [InlineKeyboardButton(f"⏱️ Thank You Delete Timer ({thank_secs}s)", callback_data="promo_set_timer")],
         [InlineKeyboardButton("⬅️ Back", callback_data="admin_menu_admin_settings")]
     ]
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
@@ -5506,15 +5602,30 @@ async def promo_set_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "promo_set_btn2":
         context.user_data['promo_setting'] = "promo_btn2_text"
         text = "✏️ <b>Button 2</b> ka text bhejo:\n(Example: Join Channel 2 / More Content)\n\n/cancel - Cancel"
+    elif data == "promo_set_timer":
+        context.user_data['promo_setting'] = "promo_thank_you_delete_seconds"
+        text = "⏱️ Thank You message delete timer (seconds) bhejo:\nExample: <code>120</code> (2 min)\n\n/cancel - Cancel"
     else:
         context.user_data['promo_setting'] = "promo_thank_you_msg"
         text = "✏️ Thank You message bhejo:\n\n/cancel - Cancel"
     await query.edit_message_text(text, parse_mode=ParseMode.HTML)
-    return 105  # PROMO_GET_VALUE state
+    return PROMO_GET_VALUE
 
 async def promo_set_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     key = context.user_data.get('promo_setting')
     value = update.message.text.strip()
+    if not key:
+        await update.message.reply_text("Error. /cancel and try again.")
+        return ConversationHandler.END
+    if key == "promo_thank_you_delete_seconds":
+        try:
+            value = int(value)
+            if value < 10:
+                await update.message.reply_text("Minimum 10 seconds.")
+                return PROMO_GET_VALUE
+        except Exception:
+            await update.message.reply_text("Sirf number bhejo (seconds).")
+            return PROMO_GET_VALUE
     if not key:
         await update.message.reply_text("Error. /cancel and try again.")
         return ConversationHandler.END
@@ -5539,7 +5650,7 @@ async def promo_set_clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 async def send_promo_thank_you(bot, user_id: int):
-    """Download ke baad thank you + join channel buttons"""
+    """Download ke baad thank you + join channel buttons + own delete timer"""
     try:
         config = config_collection.find_one({"_id": "bot_config"}) or {}
         msg = config.get("promo_thank_you_msg") or "🙏 <b>Thank you for your time and consideration!</b>"
@@ -5547,6 +5658,28 @@ async def send_promo_thank_you(bot, user_id: int):
         p2 = config.get("promo_channel_2")
         btn1_text = config.get("promo_btn1_text") or "📢 Join Channel"
         btn2_text = config.get("promo_btn2_text") or "📢 Join Channel 2"
+        # Separate timer for thank you message (default 120s)
+        thank_secs = int(config.get("promo_thank_you_delete_seconds") or 120)
+        if thank_secs < 10:
+            thank_secs = 10
+        _h = thank_secs // 3600
+        _m = (thank_secs % 3600) // 60
+        _s = thank_secs % 60
+        if _h > 0:
+            time_str = f"{_h}h {_m}m {_s}s"
+        elif _m > 0:
+            time_str = f"{_m}m {_s}s"
+        else:
+            time_str = f"{_s}s"
+        full_msg = f"{msg}\n\n⏳ <i>This message auto-deletes in <b>{time_str}</b></i>"
+        
+        from datetime import datetime, timedelta
+        ty_deadline = datetime.utcnow() + timedelta(seconds=thank_secs)
+        db['user_delete_timers'].update_one(
+            {"user_id": user_id, "type": "thankyou"},
+            {"$set": {"user_id": user_id, "type": "thankyou", "deadline": ty_deadline, "seconds": thank_secs}},
+            upsert=True
+        )
         
         keyboard = []
         row = []
@@ -5556,9 +5689,17 @@ async def send_promo_thank_you(bot, user_id: int):
             row.append(InlineKeyboardButton(btn2_text, url=p2))
         if row:
             keyboard.append(row)
+        rtxt = config.get("btn_text_refresh_timer") or "🔄 Refresh Timer"
+        keyboard.append([InlineKeyboardButton(rtxt, callback_data="thankyou_timer_refresh")])
         
         reply_markup = InlineKeyboardMarkup(keyboard) if keyboard else None
-        await bot.send_message(chat_id=user_id, text=msg, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+        sent = await bot.send_message(chat_id=user_id, text=full_msg, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+        try:
+            asyncio.create_task(delete_message_later(
+                bot=bot, chat_id=user_id, message_id=sent.message_id, seconds=thank_secs
+            ))
+        except Exception as e:
+            logger.error(f"Thank you delete schedule failed: {e}")
     except Exception as e:
         logger.error(f"Promo thank you send failed: {e}")
 
@@ -5705,8 +5846,14 @@ async def handle_deep_link_request(user: User, context: ContextTypes.DEFAULT_TYP
         await send_request_limit_msg(user, context, msg, user_id=user.id)
         return
     text = await format_message(context, "user_request_prompt", {"remaining": str(remaining)})
-    await context.bot.send_message(chat_id=user.id, text=text, parse_mode=ParseMode.HTML)
+    await context.bot.send_message(
+        chat_id=user.id,
+        text=text,
+        parse_mode=ParseMode.HTML,
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📝 Type request below", callback_data="noop")]])
+    )
     context.user_data["awaiting_movie_request"] = True
+    context.user_data["request_mode"] = True
 
 async def request_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """ /request - user movie request (3/day) """
@@ -5929,19 +6076,20 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         payload = " ".join(args) 
         logger.info(f"User {user_id} ne deep link use kiya: {payload}")
         
+        payload_l = (payload or "").strip().lower()
         if payload.startswith("dl"):
             await handle_deep_link_download(user, context, payload)
             return
             
-        elif payload == "donate":
+        elif payload_l == "donate":
             await handle_deep_link_donate(user, context)
             return
         
-        elif payload == "verify":
+        elif payload_l == "verify":
             await handle_deep_link_verify(user, context)
             return
         
-        elif payload == "request":
+        elif payload_l == "request" or payload_l.startswith("request"):
             await handle_deep_link_request(user, context)
             return
     
@@ -6276,8 +6424,27 @@ async def download_button_handler(update: Update, context: ContextTypes.DEFAULT_
             extra_q = [q for q in available_qualities if q not in sorted_q_list]
             sorted_q_list.extend(extra_q)
             
+            # Human readable remaining delete time
+            _h = delete_time // 3600
+            _m = (delete_time % 3600) // 60
+            _s = delete_time % 60
+            if _h > 0:
+                time_str = f"{_h}h {_m}m {_s}s"
+            elif _m > 0:
+                time_str = f"{_m}m {_s}s"
+            else:
+                time_str = f"{_s}s"
             delete_minutes = max(1, delete_time // 60)
-            warning_template = await format_message(context, "file_warning", {"minutes": str(delete_minutes)})
+            try:
+                warning_template = await format_message(context, "file_warning", {
+                    "minutes": str(delete_minutes),
+                    "time": time_str,
+                    "seconds": str(delete_time),
+                })
+            except Exception:
+                warning_template = f"⚠️ <b>Auto-delete in {time_str}</b>"
+            if "{time}" not in (warning_template or "") and "Auto-delete" not in (warning_template or "") and time_str not in (warning_template or ""):
+                warning_template = (warning_template or "") + f"\n⏳ Remaining: <b>{time_str}</b>"
             
             for quality in sorted_q_list:
                 file_id = qualities_dict.get(quality)
@@ -6335,6 +6502,30 @@ async def download_button_handler(update: Update, context: ContextTypes.DEFAULT_
                     ))
                 except Exception as e:
                     logger.error(f"Async 'Sending files...' message delete schedule failed: {e}")
+            
+            # Timer status message (refreshable)
+            try:
+                from datetime import datetime, timedelta
+                deadline = datetime.utcnow() + timedelta(seconds=delete_time)
+                db['user_delete_timers'].update_one(
+                    {"user_id": user_id},
+                    {"$set": {"user_id": user_id, "deadline": deadline, "seconds": delete_time}},
+                    upsert=True
+                )
+                _h, _m, _s = delete_time // 3600, (delete_time % 3600) // 60, delete_time % 60
+                tstr = f"{_h}h {_m}m {_s}s" if _h else (f"{_m}m {_s}s" if _m else f"{_s}s")
+                rtxt = (config_collection.find_one({"_id": "bot_config"}) or {}).get("btn_text_refresh_timer") or "🔄 Refresh Timer"
+                timer_msg = await context.bot.send_message(
+                    chat_id=user_id,
+                    text=f"⏳ <b>Files auto-delete in:</b> <code>{tstr}</code>\n\nRefresh dabake remaining time dekho.",
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(rtxt, callback_data="file_timer_refresh")]])
+                )
+                asyncio.create_task(delete_message_later(
+                    bot=context.bot, chat_id=user_id, message_id=timer_msg.message_id, seconds=delete_time
+                ))
+            except Exception as e:
+                logger.error(f"Timer status msg failed: {e}")
             
             # Thank you + promo channels
             await send_promo_thank_you(context.bot, user_id)
@@ -6453,8 +6644,27 @@ async def download_button_handler(update: Update, context: ContextTypes.DEFAULT_
             extra_q = [q for q in available_qualities if q not in sorted_q_list]
             sorted_q_list.extend(extra_q)
             
+            # Human readable remaining delete time
+            _h = delete_time // 3600
+            _m = (delete_time % 3600) // 60
+            _s = delete_time % 60
+            if _h > 0:
+                time_str = f"{_h}h {_m}m {_s}s"
+            elif _m > 0:
+                time_str = f"{_m}m {_s}s"
+            else:
+                time_str = f"{_s}s"
             delete_minutes = max(1, delete_time // 60)
-            warning_template = await format_message(context, "file_warning", {"minutes": str(delete_minutes)})
+            try:
+                warning_template = await format_message(context, "file_warning", {
+                    "minutes": str(delete_minutes),
+                    "time": time_str,
+                    "seconds": str(delete_time),
+                })
+            except Exception:
+                warning_template = f"⚠️ <b>Auto-delete in {time_str}</b>"
+            if "{time}" not in (warning_template or "") and "Auto-delete" not in (warning_template or "") and time_str not in (warning_template or ""):
+                warning_template = (warning_template or "") + f"\n⏳ Remaining: <b>{time_str}</b>"
             
             msg = f"🎬 <b>{anime_name}</b>\n\nQuality select karein ya files bhej raha hoon..."
             sent_msg = await context.bot.send_message(user_id, msg, parse_mode=ParseMode.HTML)
@@ -6502,6 +6712,30 @@ async def download_button_handler(update: Update, context: ContextTypes.DEFAULT_
                         seconds=delete_time
                     ))
                 except: pass
+            
+            # Timer status message (refreshable)
+            try:
+                from datetime import datetime, timedelta
+                deadline = datetime.utcnow() + timedelta(seconds=delete_time)
+                db['user_delete_timers'].update_one(
+                    {"user_id": user_id},
+                    {"$set": {"user_id": user_id, "deadline": deadline, "seconds": delete_time}},
+                    upsert=True
+                )
+                _h, _m, _s = delete_time // 3600, (delete_time % 3600) // 60, delete_time % 60
+                tstr = f"{_h}h {_m}m {_s}s" if _h else (f"{_m}m {_s}s" if _m else f"{_s}s")
+                rtxt = (config_collection.find_one({"_id": "bot_config"}) or {}).get("btn_text_refresh_timer") or "🔄 Refresh Timer"
+                timer_msg = await context.bot.send_message(
+                    chat_id=user_id,
+                    text=f"⏳ <b>Files auto-delete in:</b> <code>{tstr}</code>\n\nRefresh dabake remaining time dekho.",
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(rtxt, callback_data="file_timer_refresh")]])
+                )
+                asyncio.create_task(delete_message_later(
+                    bot=context.bot, chat_id=user_id, message_id=timer_msg.message_id, seconds=delete_time
+                ))
+            except Exception as e:
+                logger.error(f"Timer status msg failed: {e}")
             
             # Thank you + promo channels
             await send_promo_thank_you(context.bot, user_id)
@@ -7191,6 +7425,8 @@ def main():
     bot_app.add_handler(CallbackQueryHandler(post_buttons_menu, pattern="^admin_post_buttons$"))
     bot_app.add_handler(CallbackQueryHandler(admin_chats_menu, pattern="^admin_chats_menu$"))
     bot_app.add_handler(CallbackQueryHandler(request_timer_refresh, pattern="^request_timer_refresh$"))
+    bot_app.add_handler(CallbackQueryHandler(file_timer_refresh, pattern="^file_timer_refresh$"))
+    bot_app.add_handler(CallbackQueryHandler(thankyou_timer_refresh, pattern="^thankyou_timer_refresh$"))
     bot_app.add_handler(CallbackQueryHandler(chats_list, pattern="^chats_(pending|replied)_"))
     bot_app.add_handler(CallbackQueryHandler(chats_view, pattern="^chats_view_"))
     bot_app.add_handler(CallbackQueryHandler(chats_ban_user, pattern="^chats_banuser_"))
