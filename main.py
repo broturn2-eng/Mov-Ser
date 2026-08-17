@@ -583,15 +583,15 @@ async def format_message(context: ContextTypes.DEFAULT_TYPE, key: str, variables
     """
     config = await get_config()
     
-    # 1. Message template - language pack pehle, phir DB, phir default
+    # 1. Message template - ADMIN CUSTOM (DB) pehle, phir language pack, phir default
     default_messages = await get_default_messages()
     lang = config.get("bot_language", "hinglish")
     
     raw_text = None
-    if lang and lang != "hinglish" and lang in LANGUAGE_PACKS:
+    # Custom messages (Bot Messages se set) hamesha sabse pehle
+    raw_text = (config.get("messages") or {}).get(key)
+    if not raw_text and lang and lang != "hinglish" and lang in LANGUAGE_PACKS:
         raw_text = LANGUAGE_PACKS[lang].get(key)
-    if not raw_text:
-        raw_text = config.get("messages", {}).get(key)
     if not raw_text:
         raw_text = default_messages.get(key, f"MISSING_KEY: {key}")
     
@@ -1068,7 +1068,7 @@ async def get_config():
                     "admin_add_season_select_anime", "admin_add_season_no_anime",
                     "admin_add_anime_start", "admin_add_anime_get_name", "admin_add_anime_save_exists",
                     "user_dl_anime_not_found", "admin_menu_add_content",
-                    "post_gen_anime_caption", "post_gen_season_caption", "post_gen_episode_caption",
+                    # post_gen_*_caption NOT here — admin custom caption kabhi overwrite mat karo
                 ]
                 if key in force_keys:
                     config["messages"][key] = value
