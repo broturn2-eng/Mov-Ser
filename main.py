@@ -1142,47 +1142,11 @@ def build_grid_keyboard(buttons, items_per_row=2):
 # NAYA (v10): Pagination Helper
 
 def sanitize_telegram_html(text: str) -> str:
-    """Fix broken HTML; KEEP blockquotes; fix unexpected end tags + common nesting mistakes"""
+    """Minimal HTML fix — blockquote/bold/font tags PRESERVE, sirf balance"""
     if not text:
         return text or ""
     import re
     text = text.replace("<br>", "\n").replace("<br/>", "\n").replace("<br />", "\n")
-    
-    # Common nesting mistakes that Telegram rejects:
-    # <b> ... <blockquote> ... </b> ... </blockquote>  → fix to proper close order
-    # Remove any </b> that appears before its matching open inside blockquote wrongly
-    # Simple safe approach: close open <b> before </blockquote> if needed
-    def _fix_b_before_blockquote_close(t):
-        # If we see </blockquote> while a <b> is still open, insert </b> before it
-        # (approximate, works for most single-level cases)
-        opens_b = 0
-        result = []
-        i = 0
-        lower = t.lower()
-        while i < len(t):
-            if lower.startswith('<b>', i):
-                opens_b += 1
-                result.append(t[i:i+3])
-                i += 3
-            elif lower.startswith('</b>', i):
-                if opens_b > 0:
-                    opens_b -= 1
-                result.append(t[i:i+4])
-                i += 4
-            elif lower.startswith('</blockquote>', i):
-                if opens_b > 0:
-                    result.append('</b>' * opens_b)
-                    opens_b = 0
-                result.append(t[i:i+13])
-                i += 13
-            else:
-                result.append(t[i])
-                i += 1
-        if opens_b > 0:
-            result.append('</b>' * opens_b)
-        return ''.join(result)
-    
-    text = _fix_b_before_blockquote_close(text)
     
     def _balance(t, open_pat, close_tag):
         opens = len(re.findall(open_pat, t, flags=re.I))
@@ -1190,6 +1154,7 @@ def sanitize_telegram_html(text: str) -> str:
         if opens > closes:
             t = t + (close_tag * (opens - closes))
         elif closes > opens:
+            # extra closing tags hatao (end se)
             extra = closes - opens
             for _ in range(extra):
                 idx = t.lower().rfind(close_tag.lower())
@@ -1197,13 +1162,14 @@ def sanitize_telegram_html(text: str) -> str:
                     t = t[:idx] + t[idx+len(close_tag):]
         return t
     
-    text = _balance(text, r"<blockquote[^>]*>", "</blockquote>")
+    # Order: inner tags first, blockquote last so structure survives
     text = _balance(text, r"<b>", "</b>")
     text = _balance(text, r"<i>", "</i>")
     text = _balance(text, r"<code>", "</code>")
     text = _balance(text, r"<u>", "</u>")
     text = _balance(text, r"<s>", "</s>")
     text = _balance(text, r"<pre>", "</pre>")
+    text = _balance(text, r"<blockquote[^>]*>", "</blockquote>")
     return text
 
 async def build_paginated_keyboard(
@@ -3665,7 +3631,7 @@ async def post_gen_get_short_link(update: Update, context: ContextTypes.DEFAULT_
         # Save short link
         context.user_data['short_link_url'] = short_link_url
         m = await update.message.reply_text(
-            f"✅ <b>Short Link Saved!</b>\n\n<code>{short_link_url}</code>",
+            f"✅ <b>Short link set for this post only</b> (DB mein save nahi)\n\n<code>{short_link_url}</code>",
             parse_mode=ParseMode.HTML
         )
         await schedule_admin_msg_delete(context.bot, m.chat_id, m.message_id, 60)
@@ -4144,7 +4110,7 @@ async def post_edit_title_save(update: Update, context: ContextTypes.DEFAULT_TYP
     caption = sanitize_telegram_html(caption or "")
     context.user_data['post_caption_formatted'] = caption
     
-    await update.message.reply_text("✅ Title updated.", parse_mode=ParseMode.HTML)
+    await update.message.reply_text("✅ Title updated (sirf is post ke liye, DB mein nahi).", parse_mode=ParseMode.HTML)
     try:
         await update.message.reply_text(
             "👁️ <b>POST PREVIEW</b>\n\n" + caption,
@@ -4188,7 +4154,7 @@ async def post_edit_desc_save(update: Update, context: ContextTypes.DEFAULT_TYPE
     caption = await _rebuild_post_caption(context)
     caption = sanitize_telegram_html(caption or "")
     context.user_data['post_caption_formatted'] = caption
-    await update.message.reply_text("✅ Description updated.", parse_mode=ParseMode.HTML)
+    await update.message.reply_text("✅ Description updated (sirf is post ke liye, DB mein nahi).", parse_mode=ParseMode.HTML)
     try:
         await update.message.reply_text("👁️ <b>POST PREVIEW</b>\n\n" + caption, reply_markup=InlineKeyboardMarkup(_get_preview_keyboard()), parse_mode=ParseMode.HTML)
     except BadRequest as e:
