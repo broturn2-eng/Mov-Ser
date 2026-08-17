@@ -3633,15 +3633,34 @@ async def post_gen_get_short_link(update: Update, context: ContextTypes.DEFAULT_
         context.user_data['post_caption_formatted'] = caption_formatted
         context.user_data['post_caption_raw'] = caption_raw
         
-        # Parse 3 parts
+        # Parse 3 parts — smart: only treat first <b> as title if it matches anime_name
+        # (warna custom templates jisme TYPE/IMDB etc bold hote hain, unko tod do mat)
         import re as _re
+        anime_name = (context.user_data.get('anime_name') or '').strip()
         title_match = _re.search(r'<b>([^<]+)</b>', caption_formatted or "")
-        if title_match:
-            context.user_data['post_edit_title'] = title_match.group(1).strip()
+        extracted_title = title_match.group(1).strip() if title_match else ''
+        
+        # Sirf tab title extract karo jab extracted text anime_name se match kare
+        # (TYPE / IMDB / STATUS jaise field labels ko title mat banao)
+        is_real_title = False
+        if extracted_title and anime_name:
+            et = extracted_title.lower().strip()
+            an = anime_name.lower().strip()
+            if et == an or et in an or an in et:
+                is_real_title = True
+            # short code exact match (WFL == WFL)
+            elif len(extracted_title) <= 15 and et.replace(' ', '') == an.replace(' ', ''):
+                is_real_title = True
+        
+        if is_real_title and title_match:
+            context.user_data['post_edit_title'] = extracted_title
             rest = caption_formatted[title_match.end():].strip().lstrip('\n')
+            context.user_data['post_is_complex'] = False
         else:
-            context.user_data['post_edit_title'] = context.user_data.get('anime_name', '') or ''
+            # Complex caption (TYPE/IMDB template) — full original structure preserve karo, kuch mat todo
+            context.user_data['post_edit_title'] = anime_name or ''
             rest = caption_formatted or ""
+            context.user_data['post_is_complex'] = True
         
         lines = rest.split('\n')
         footer_idx = None
@@ -3661,6 +3680,8 @@ async def post_gen_get_short_link(update: Update, context: ContextTypes.DEFAULT_
         context.user_data['post_edit_footer'] = footer
         context.user_data['post_edit_middle'] = middle
         context.user_data['post_is_quoted'] = False
+        # Original full caption bhi rakh lo (edit se pehle)
+        context.user_data['post_caption_original'] = caption_formatted or ''
         
         try:
             caption_formatted = await _rebuild_post_caption(context)
@@ -3857,12 +3878,23 @@ def _get_preview_keyboard():
     ]
 
 async def _rebuild_post_caption(context):
-    """Title + middle + footer — temporary only, no DB. No double title. Keep existing blockquotes."""
+    """Title + middle + footer — temporary only, no DB. Preserve fonts/bold/blockquote. No double title."""
     import re as _re
     title = context.user_data.get('post_edit_title', '') or ''
     middle = context.user_data.get('post_edit_middle', '') or ''
     footer = context.user_data.get('post_edit_footer', '') or ''
     is_quoted = context.user_data.get('post_is_quoted', False)
+    is_complex = context.user_data.get('post_is_complex', False)
+    
+    # Complex templates (TYPE/IMDB etc) — original structure bilkul mat todo
+    if is_complex:
+        caption = middle or context.user_data.get('post_caption_original') or context.user_data.get('post_caption_formatted', '') or ''
+        if footer and footer not in caption:
+            caption = (caption + "\n\n" + footer).strip()
+        if is_quoted and caption and "<blockquote" not in caption.lower():
+            caption = f"<blockquote>{caption}</blockquote>"
+        context.user_data['post_caption_formatted'] = caption
+        return caption
     
     # Sirf empty blockquotes clean; content blockquote MAT hatao
     if middle:
@@ -3871,17 +3903,22 @@ async def _rebuild_post_caption(context):
     
     has_blockquote = bool(middle and '<blockquote' in middle.lower())
     
+    # Double title avoid: agar middle pehle se title se start hota hai to outer title skip
+    title_already_in_middle = False
+    if title and middle:
+        esc = _re.escape(title)
+        if _re.match(rf'^(?:\s*<blockquote[^>]*>\s*)?(?:<b>)?\s*{esc}\s*(?:</b>)?', middle, flags=_re.I):
+            title_already_in_middle = True
+    
     parts = []
-    # Agar middle mein pehle se blockquote hai to bahar wala title MAT lagao (double + quote style dono fix)
-    # Warna normal title + middle
-    if title and not has_blockquote:
+    if title and not has_blockquote and not title_already_in_middle:
         parts.append(f"<b>{title}</b>")
     if middle:
         parts.append(middle)
     if footer:
         parts.append(footer)
     
-    caption = "\n\n".join(parts) if parts else context.user_data.get('post_caption_formatted', '')
+    caption = "\n\n".join(parts) if parts else (context.user_data.get('post_caption_original') or context.user_data.get('post_caption_formatted', ''))
     
     # Toggle Quote: only wrap if no blockquote already present
     if is_quoted and caption and "<blockquote" not in caption.lower():
