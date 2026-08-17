@@ -3645,6 +3645,7 @@ async def gen_link_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     keyboard = [
+        [InlineKeyboardButton("🎬 Movie Link", callback_data="gen_link_movie")],
         [InlineKeyboardButton("🔗 Complete Series Link", callback_data="gen_link_anime")],
         [InlineKeyboardButton("🔗 Season Link", callback_data="gen_link_season")],
         [InlineKeyboardButton("🔗 Episode Link", callback_data="gen_link_episode")],
@@ -3670,19 +3671,29 @@ async def gen_link_show_anime_list(update: Update, context: ContextTypes.DEFAULT
         await query.answer()
 
     context.user_data['current_page'] = page
+    link_type = context.user_data.get('link_type', '')
+    
+    if link_type == 'gen_link_movie':
+        filter_query = {"type": "movie"}
+        list_label = "Movie"
+    else:
+        # Series only
+        filter_query = {"$or": [{"type": "series"}, {"type": {"$exists": False}}]}
+        list_label = "Series"
         
     animes, keyboard = await build_paginated_keyboard(
         collection=animes_collection,
         page=page,
         page_callback_prefix="genlink_page_",
         item_callback_prefix="gen_link_anime_",
-        back_callback="admin_gen_link" 
+        back_callback="admin_gen_link",
+        filter_query=filter_query
     )
     
     if not animes and page == 0:
-        text = await format_message(context, "admin_gen_link_no_anime")
+        text = f"❌ Abhi koi <b>{list_label}</b> add nahi hua hai."
     else:
-        text = await format_message(context, "admin_gen_link_select_anime", {"page": page + 1}) # NAYA: Text DB se
+        text = f"Kaunsa <b>{list_label}</b> select karna hai?\n\n(Page {page + 1})"
 
     await query.edit_message_text(text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
     return GL_GET_ANIME
@@ -3693,7 +3704,7 @@ async def gen_link_select_season(update: Update, context: ContextTypes.DEFAULT_T
     anime_name = query.data.replace("gen_link_anime_", "")
     context.user_data['anime_name'] = anime_name
     
-    if context.user_data['link_type'] == 'gen_link_anime':
+    if context.user_data['link_type'] in ('gen_link_anime', 'gen_link_movie'):
         context.user_data['season_name'] = None
         context.user_data['ep_num'] = None 
         return await gen_link_finish(update, context) 
@@ -6529,7 +6540,7 @@ def main():
     gen_link_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(gen_link_menu, pattern="^admin_gen_link$")],
         states={
-            GL_MENU: [CallbackQueryHandler(gen_link_select_anime, pattern="^gen_link_anime$|^gen_link_season$|^gen_link_episode$")],
+            GL_MENU: [CallbackQueryHandler(gen_link_select_anime, pattern="^gen_link_anime$|^gen_link_movie$|^gen_link_season$|^gen_link_episode$")],
             GL_GET_ANIME: [
                 CallbackQueryHandler(gen_link_show_anime_list, pattern="^genlink_page_"),
                 CallbackQueryHandler(gen_link_select_season, pattern="^gen_link_anime_")
