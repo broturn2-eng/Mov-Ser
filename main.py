@@ -6855,14 +6855,13 @@ def main():
     
     # --- Saare handlers ko bot_app me add karo ---
     # /request system
-    bot_app.add_handler(CommandHandler("request", request_command))
     bot_app.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE & filters.REPLY,
         admin_reply_to_request
     ), group=2)
     bot_app.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE,
-        request_user_message
+        request_text_fallback
     ), group=1)
     
     bot_app.add_handler(add_anime_conv)
