@@ -3314,7 +3314,11 @@ async def set_msg_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def set_msg_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        msg_text = update.message.text # Ab raw text save hoga (jisme <b> <blockquote> etc. ho sakte hain)
+        msg_text = update.message.text or ''
+        # Code-block se copy / entities unescape
+        msg_text = (msg_text.replace('&lt;', '<').replace('&gt;', '>')
+                   .replace('&amp;', '&').replace('&quot;', '"'))
+        msg_text = msg_text.replace('\u200b', '').replace('\ufeff', '').strip()
         msg_key = context.user_data['msg_key']
         
         config_collection.update_one({"_id": "bot_config"}, {"$set": {f"messages.{msg_key}": msg_text}}, upsert=True)
@@ -3761,19 +3765,7 @@ async def post_gen_get_short_link(update: Update, context: ContextTypes.DEFAULT_
             context.user_data['post_edit_title'] = anime_name or ''
             rest = caption_formatted or ""
             context.user_data['post_is_complex'] = True
-            # Title quote ke andar dikhe (agar pehle se nahi hai)
-            if anime_name and anime_name not in (rest or ''):
-                import re as _re2
-                if '<blockquote' in (rest or '').lower():
-                    rest = _re2.sub(
-                        r'(<blockquote[^>]*>)',
-                        rf'\1\n<b>{anime_name}</b>\n',
-                        rest,
-                        count=1,
-                        flags=_re2.I
-                    )
-                else:
-                    rest = f"<b>{anime_name}</b>\n\n{rest}"
+            # Title alag blockquote mein rebuild pe lagega — yahan rest mein mat ghusaao
         
         lines = rest.split('\n')
         footer_idx = None
@@ -4010,14 +4002,45 @@ async def _rebuild_post_caption(context):
     is_quoted = context.user_data.get('post_is_quoted', False)
     is_complex = context.user_data.get('post_is_complex', False)
     
-    # Complex templates (TYPE/IMDB etc) — structure preserve
-    # Bahar wala title MAT lagao (user: sirf quote ke andar wala title rahe)
+    # Complex templates — 3 alag blockquotes (jaise channel post):
+    # 1) Title quote  2) Details quote  3) Press On Download quote
     if is_complex:
-        caption = middle or context.user_data.get('post_caption_original') or context.user_data.get('post_caption_formatted', '') or ''
-        if footer and footer not in caption:
-            caption = (caption + "\n\n" + footer).strip()
-        if is_quoted and caption and "<blockquote" not in caption.lower():
-            caption = f"<blockquote>{caption}</blockquote>"
+        details = middle or context.user_data.get('post_caption_original') or context.user_data.get('post_caption_formatted', '') or ''
+        # Details se leading title hatao (agar pehle insert ho chuka ho) taaki double na ho
+        if title and details:
+            esc = _re.escape(title)
+            details = _re.sub(
+                rf'^(?:\s*<blockquote[^>]*>\s*)?(?:<b>)?\s*{esc}\s*(?:</b>)?\s*(?:\n+)?',
+                '',
+                details,
+                count=1,
+                flags=_re.I
+            ).strip()
+            # orphan empty open blockquote clean
+            details = _re.sub(r'^<blockquote[^>]*>\s*', '', details, count=1, flags=_re.I).strip()
+        
+        parts = []
+        # 1) Title — apna alag quote block
+        if title:
+            parts.append(f"<blockquote><b>{title}</b></blockquote>")
+        
+        # 2) Details — apna quote (template se, ya wrap)
+        if details:
+            if '<blockquote' in details.lower():
+                parts.append(details)
+            else:
+                parts.append(f"<blockquote>{details}</blockquote>")
+        
+        # 3) Footer / Press On Download — alag quote
+        if footer:
+            ft = footer.strip()
+            if ft and ft not in (details or ''):
+                if ft.lower().startswith('<blockquote'):
+                    parts.append(ft)
+                else:
+                    parts.append(f"<blockquote>{ft}</blockquote>")
+        
+        caption = "\n\n".join(parts) if parts else (details or '')
         caption = sanitize_telegram_html(caption or "")
         context.user_data['post_caption_formatted'] = caption
         return caption
@@ -4109,25 +4132,13 @@ async def post_edit_title_save(update: Update, context: ContextTypes.DEFAULT_TYP
             part = part.replace(old_title, new_title)
             context.user_data[key] = part
     
-    # Complex / quote caption: title quote ke ANDAR dikhana hai
-    # Agar middle mein title nahi mila to blockquote ke start pe insert karo
+    # Complex: title alag blockquote mein rebuild se aayega
+    # Middle se purana title text hata do taaki details clean rahein
     middle = context.user_data.get('post_edit_middle', '') or ''
-    if new_title and new_title not in middle:
-        if '<blockquote' in middle.lower():
-            # <blockquote...> ke turant baad title daalo
-            middle = _re.sub(
-                r'(<blockquote[^>]*>)',
-                rf'\1\n<b>{new_title}</b>\n',
-                middle,
-                count=1,
-                flags=_re.I
-            )
-        else:
-            middle = f"<b>{new_title}</b>\n\n{middle}"
+    if old_title and middle and old_title in middle:
+        middle = middle.replace(old_title, '').strip()
         context.user_data['post_edit_middle'] = middle
-    elif old_title and old_title in middle and old_title != new_title:
-        # already replaced above
-        pass
+    # new title sirf post_edit_title mein — rebuild 3-block structure banayega
     
     caption = await _rebuild_post_caption(context)
     caption = sanitize_telegram_html(caption or "")
@@ -4663,7 +4674,11 @@ async def set_msg_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def set_msg_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        msg_text = update.message.text # Ab raw text save hoga (jisme <b> <blockquote> etc. ho sakte hain)
+        msg_text = update.message.text or ''
+        # Code-block se copy / entities unescape
+        msg_text = (msg_text.replace('&lt;', '<').replace('&gt;', '>')
+                   .replace('&amp;', '&').replace('&quot;', '"'))
+        msg_text = msg_text.replace('\u200b', '').replace('\ufeff', '').strip()
         msg_key = context.user_data['msg_key']
         
         config_collection.update_one({"_id": "bot_config"}, {"$set": {f"messages.{msg_key}": msg_text}}, upsert=True)
