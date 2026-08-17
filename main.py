@@ -3722,16 +3722,23 @@ async def post_gen_get_short_link(update: Update, context: ContextTypes.DEFAULT_
             elif len(extracted_title) <= 15 and et.replace(' ', '') == an.replace(' ', ''):
                 is_real_title = True
         
-        if is_real_title and title_match:
+        # TYPE/IMDB style templates always complex (3 blockquotes)
+        looks_complex = bool(
+            caption_formatted and (
+                'TYPE' in caption_formatted.upper() or
+                'IMDB' in caption_formatted.upper() or
+                'LANGUAGE' in caption_formatted.upper() or
+                '<blockquote' in caption_formatted.lower()
+            )
+        )
+        if is_real_title and title_match and not looks_complex:
             context.user_data['post_edit_title'] = extracted_title
             rest = caption_formatted[title_match.end():].strip().lstrip('\n')
             context.user_data['post_is_complex'] = False
         else:
-            # Complex caption (TYPE/IMDB template) — full original structure preserve karo, kuch mat todo
-            context.user_data['post_edit_title'] = anime_name or ''
+            context.user_data['post_edit_title'] = anime_name or extracted_title or ''
             rest = caption_formatted or ""
             context.user_data['post_is_complex'] = True
-            # Title alag blockquote mein rebuild pe lagega — yahan rest mein mat ghusaao
         
         lines = rest.split('\n')
         footer_idx = None
@@ -3968,45 +3975,37 @@ async def _rebuild_post_caption(context):
     is_quoted = context.user_data.get('post_is_quoted', False)
     is_complex = context.user_data.get('post_is_complex', False)
     
-    # Complex templates — 3 alag blockquotes (jaise channel post):
-    # 1) Title quote  2) Details quote  3) Press On Download quote
+    # Complex templates — 3 clean blockquotes (Telegram-safe HTML)
     if is_complex:
-        details = middle or context.user_data.get('post_caption_original') or context.user_data.get('post_caption_formatted', '') or ''
-        # Details se leading title hatao (agar pehle insert ho chuka ho) taaki double na ho
-        if title and details:
-            esc = _re.escape(title)
-            details = _re.sub(
-                rf'^(?:\s*<blockquote[^>]*>\s*)?(?:<b>)?\s*{esc}\s*(?:</b>)?\s*(?:\n+)?',
+        import re as _re2
+        details = (middle or context.user_data.get('post_caption_original') or
+                   context.user_data.get('post_caption_formatted', '') or '')
+        # Strip any existing blockquote wrappers from details so we re-wrap cleanly
+        details = _re2.sub(r'</?blockquote[^>]*>', '', details, flags=_re2.I).strip()
+        # Remove leading title from details if present (title gets own block)
+        if title:
+            esc = _re2.escape(title)
+            details = _re2.sub(
+                rf'^(?:<b>)?\s*{esc}\s*(?:</b>)?\s*\n*',
                 '',
                 details,
                 count=1,
-                flags=_re.I
+                flags=_re2.I
             ).strip()
-            # orphan empty open blockquote clean
-            details = _re.sub(r'^<blockquote[^>]*>\s*', '', details, count=1, flags=_re.I).strip()
+        # Clean footer of blockquote tags
+        ft = (footer or '').strip()
+        ft = _re2.sub(r'</?blockquote[^>]*>', '', ft, flags=_re2.I).strip()
         
         parts = []
-        # 1) Title — apna alag quote block
         if title:
             parts.append(f"<blockquote><b>{title}</b></blockquote>")
-        
-        # 2) Details — apna quote (template se, ya wrap)
         if details:
-            if '<blockquote' in details.lower():
-                parts.append(details)
-            else:
-                parts.append(f"<blockquote>{details}</blockquote>")
+            parts.append(f"<blockquote>{details}</blockquote>")
+        if ft:
+            parts.append(f"<blockquote>{ft}</blockquote>")
         
-        # 3) Footer / Press On Download — alag quote
-        if footer:
-            ft = footer.strip()
-            if ft and ft not in (details or ''):
-                if ft.lower().startswith('<blockquote'):
-                    parts.append(ft)
-                else:
-                    parts.append(f"<blockquote>{ft}</blockquote>")
-        
-        caption = "\n\n".join(parts) if parts else (details or '')
+        caption = "\n\n".join(parts) if parts else details
+        # Light sanitize — balance only
         caption = sanitize_telegram_html(caption or "")
         context.user_data['post_caption_formatted'] = caption
         return caption
@@ -7876,3 +7875,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+q
