@@ -315,23 +315,68 @@ async def is_request_banned(user_id: int) -> tuple:
     request_bans_collection.delete_one({"user_id": user_id})
     return False, ""
 
+def _format_wait(seconds: int) -> str:
+    """Seconds to human wait string"""
+    if seconds < 0:
+        seconds = 0
+    h = seconds // 3600
+    m = (seconds % 3600) // 60
+    s = seconds % 60
+    if h > 0:
+        return f"{h}h {m}m {s}s"
+    if m > 0:
+        return f"{m}m {s}s"
+    return f"{s}s"
+
 async def check_request_limit(user_id: int) -> tuple:
-    """Returns (allowed: bool, remaining: int, message: str)"""
+    """Returns (allowed: bool, remaining: int, message: str)
+    Rules: max 3 / 24h AND 8 hours gap between each request.
+    """
     from datetime import datetime, timedelta
     now = datetime.utcnow()
-    # Ban check (3 hours)
+    
+    # Ban check (admin 3h ban)
     ban = db['request_bans'].find_one({"user_id": user_id, "until": {"$gt": now}})
     if ban:
-        return False, 0, "🚫 <b>You are temporarily banned from requesting.</b>\n\nTry again after a few hours."
+        left = int((ban["until"] - now).total_seconds())
+        return False, 0, (
+            f"🚫 <b>You are temporarily banned from requesting.</b>\n\n"
+            f"⏳ Wait: <b>{_format_wait(left)}</b>"
+        )
+    
     day_ago = now - timedelta(hours=24)
-    count = request_logs_collection.count_documents({
-        "user_id": user_id,
-        "created_at": {"$gte": day_ago}
-    })
+    recent = list(request_logs_collection.find(
+        {"user_id": user_id, "created_at": {"$gte": day_ago}}
+    ).sort("created_at", -1))
+    count = len(recent)
     limit = 3
     remaining = max(0, limit - count)
+    
+    # Daily limit
     if count >= limit:
-        return False, 0, "⏳ <b>You can request a movie after the bot cooldown.</b>\n\nLimit: <b>3 requests per day</b>."
+        # Next available = 24h after oldest of last 3, or after newest+8h - simpler: 24h from first of today window
+        oldest = recent[-1]["created_at"] if recent else now
+        unlock = oldest + timedelta(hours=24)
+        left = int((unlock - now).total_seconds())
+        return False, 0, (
+            f"⏳ <b>Daily limit reached (3 requests).</b>\n\n"
+            f"Wait: <b>{_format_wait(left)}</b>\n"
+            f"You can request again after cooldown."
+        )
+    
+    # 8 hour gap after last request
+    if recent:
+        last = recent[0]["created_at"]
+        unlock = last + timedelta(hours=8)
+        if now < unlock:
+            left = int((unlock - now).total_seconds())
+            return False, remaining, (
+                f"⏳ <b>Please wait before next request.</b>\n\n"
+                f"Cooldown left: <b>{_format_wait(left)}</b>\n"
+                f"Gap: 8 hours between requests.\n"
+                f"Daily remaining after wait: <b>{remaining}/3</b>"
+            )
+    
     return True, remaining, ""
 
 async def log_movie_request(user_id: int):
