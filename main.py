@@ -1199,8 +1199,8 @@ async def build_paginated_keyboard(
     for item in items:
         if "name" in item:
             nm = str(item['name'])
-            # Full name, emoji for bigger tap target feel
-            label = f"🎬 {nm}"
+            # 3 columns rakho, text pad karke button width badhao (misclick kam)
+            label = f"   🎬 {nm}   "
             if len(label) > 64:
                 label = label[:61] + "..."
             buttons.append(InlineKeyboardButton(label, callback_data=f"{item_callback_prefix}{item['name']}"))
@@ -1209,7 +1209,7 @@ async def build_paginated_keyboard(
             first_name = item.get('first_name', f"ID: {user_id}")
             buttons.append(InlineKeyboardButton(first_name, callback_data=f"{item_callback_prefix}{user_id}"))
 
-    keyboard = build_grid_keyboard(buttons, items_per_row=3)  # 3 per row, 5 rows = 15
+    keyboard = build_grid_keyboard(buttons, items_per_row=3)  # 3 columns, wider via padded text
     
     page_buttons = []
     if page > 0:
@@ -3867,6 +3867,21 @@ async def _rebuild_post_caption(context):
     # Sirf empty blockquotes clean; content blockquote MAT hatao
     if middle:
         middle = _re.sub(r'<blockquote[^>]*>\s*</blockquote>', '', middle).strip()
+    
+    # Double title fix: middle se leading title (plain / <b> / blockquote ke andar) hatao
+    # Taaki bahar wala <b>title</b> + andar wala na dikhe
+    if title and middle:
+        esc = _re.escape(title)
+        # leading: optional blockquote + optional <b> + title + optional </b> + whitespace/newlines
+        middle = _re.sub(
+            rf'^(?:\s*<blockquote[^>]*>\s*)?(?:<b>)?\s*{esc}\s*(?:</b>)?\s*(?:\n+|\s+)?',
+            '',
+            middle,
+            count=1,
+            flags=_re.IGNORECASE
+        ).strip()
+        # agar ab empty blockquote start reh gaya to clean
+        middle = _re.sub(r'^<blockquote[^>]*>\s*', '', middle, count=1).strip()
         context.user_data['post_edit_middle'] = middle
     
     parts = []
