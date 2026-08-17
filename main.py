@@ -328,6 +328,44 @@ def _format_wait(seconds: int) -> str:
         return f"{m}m {s}s"
     return f"{s}s"
 
+
+async def send_request_limit_msg(update_or_user, context, limit_msg: str, user_id: int = None):
+    """Limit / cooldown message + Refresh button"""
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔄 Refresh Timer", callback_data="request_timer_refresh")]
+    ])
+    if hasattr(update_or_user, "message") and update_or_user.message:
+        await update_or_user.message.reply_text(limit_msg, reply_markup=keyboard, parse_mode=ParseMode.HTML)
+    elif hasattr(update_or_user, "callback_query") and update_or_user.callback_query:
+        try:
+            await update_or_user.callback_query.edit_message_text(limit_msg, reply_markup=keyboard, parse_mode=ParseMode.HTML)
+        except Exception:
+            await context.bot.send_message(update_or_user.effective_user.id, limit_msg, reply_markup=keyboard, parse_mode=ParseMode.HTML)
+    else:
+        # user object or chat id
+        uid = user_id or (update_or_user.id if hasattr(update_or_user, "id") else update_or_user)
+        await context.bot.send_message(uid, limit_msg, reply_markup=keyboard, parse_mode=ParseMode.HTML)
+
+async def request_timer_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Refresh button - show updated remaining time"""
+    query = update.callback_query
+    await query.answer("Refreshing...")
+    user_id = query.from_user.id
+    allowed, remaining, limit_msg = await check_request_limit(user_id)
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔄 Refresh Timer", callback_data="request_timer_refresh")]
+    ])
+    if allowed:
+        text = (
+            f"✅ <b>You can request now!</b>\n\n"
+            f"Remaining today: <b>{remaining}/3</b>\n\n"
+            f"Send /request or tap Request a Movie."
+        )
+        await query.edit_message_text(text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
+    else:
+        await query.edit_message_text(limit_msg, reply_markup=keyboard, parse_mode=ParseMode.HTML)
+
+
 async def check_request_limit(user_id: int) -> tuple:
     """Returns (allowed: bool, remaining: int, message: str)
     Rules: max 3 / 24h AND 8 hours gap between each request.
@@ -1149,6 +1187,7 @@ async def _update_anime_timestamp(anime_name: str):
 (VERIFY_VIDEO,) = range(106, 107)
 (PBTN_GET_TEXT,) = range(107, 108)
 (REQ_GET_TEXT,) = range(108, 109)
+(CHATS_REPLY, CHATS_BAN_ID) = range(109, 111)
 
 
 # --- NAYA: Global Cancel Function ---
@@ -5658,12 +5697,13 @@ async def handle_deep_link_request(user: User, context: ContextTypes.DEFAULT_TYP
     """Deep link Request a Movie -> same as /request start"""
     allowed, remaining, limit_msg = await check_request_limit(user.id)
     if not allowed:
-        msg = await format_message(context, "user_request_limit") if False else limit_msg
+        msg = limit_msg
         try:
-            msg = await format_message(context, "user_request_limit")
+            if not ("Wait" in limit_msg or "wait" in limit_msg or "Cooldown" in limit_msg or "banned" in limit_msg):
+                msg = await format_message(context, "user_request_limit")
         except Exception:
             msg = limit_msg
-        await context.bot.send_message(chat_id=user.id, text=msg, parse_mode=ParseMode.HTML)
+        await send_request_limit_msg(user, context, msg, user_id=user.id)
         return
     text = await format_message(context, "user_request_prompt", {"remaining": str(remaining)})
     await context.bot.send_message(chat_id=user.id, text=text, parse_mode=ParseMode.HTML)
@@ -5674,11 +5714,16 @@ async def request_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     allowed, remaining, limit_msg = await check_request_limit(user.id)
     if not allowed:
+        msg = limit_msg
         try:
-            msg = await format_message(context, "user_request_limit")
+            # Prefer live timer message over static
+            if "Wait" in limit_msg or "wait" in limit_msg or "Cooldown" in limit_msg or "banned" in limit_msg:
+                msg = limit_msg
+            else:
+                msg = await format_message(context, "user_request_limit")
         except Exception:
             msg = limit_msg
-        await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
+        await send_request_limit_msg(update, context, msg)
         return ConversationHandler.END
     text = await format_message(context, "user_request_prompt", {"remaining": str(remaining)})
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
@@ -5698,11 +5743,13 @@ async def request_receive(update: Update, context: ContextTypes.DEFAULT_TYPE):
     allowed, remaining, limit_msg = await check_request_limit(user.id)
     if not allowed:
         context.user_data["awaiting_movie_request"] = False
+        msg = limit_msg
         try:
-            msg = await format_message(context, "user_request_limit")
+            if not ("Wait" in limit_msg or "Cooldown" in limit_msg or "banned" in limit_msg):
+                msg = await format_message(context, "user_request_limit")
         except Exception:
             msg = limit_msg
-        await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
+        await send_request_limit_msg(update, context, msg)
         return ConversationHandler.END
     
     from datetime import datetime
@@ -7143,6 +7190,7 @@ def main():
     bot_app.add_handler(CallbackQueryHandler(language_menu, pattern="^admin_set_language$"))
     bot_app.add_handler(CallbackQueryHandler(post_buttons_menu, pattern="^admin_post_buttons$"))
     bot_app.add_handler(CallbackQueryHandler(admin_chats_menu, pattern="^admin_chats_menu$"))
+    bot_app.add_handler(CallbackQueryHandler(request_timer_refresh, pattern="^request_timer_refresh$"))
     bot_app.add_handler(CallbackQueryHandler(chats_list, pattern="^chats_(pending|replied)_"))
     bot_app.add_handler(CallbackQueryHandler(chats_view, pattern="^chats_view_"))
     bot_app.add_handler(CallbackQueryHandler(chats_ban_user, pattern="^chats_banuser_"))
