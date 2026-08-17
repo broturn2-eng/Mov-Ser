@@ -1136,34 +1136,35 @@ def build_grid_keyboard(buttons, items_per_row=2):
 # NAYA (v10): Pagination Helper
 
 def sanitize_telegram_html(text: str) -> str:
-    """Fix broken HTML so Telegram parse entities does not fail"""
+    """Fix broken HTML; KEEP blockquotes; fix unexpected end tags"""
     if not text:
         return text or ""
     import re
-    # Remove unclosed tags that often break
-    # Keep only allowed simple tags; fix common issues
-    # Strip incomplete tags at end
     text = text.replace("<br>", "\n").replace("<br/>", "\n").replace("<br />", "\n")
-    # Balance blockquote
-    opens = len(re.findall(r"<blockquote[^>]*>", text, flags=re.I))
-    closes = len(re.findall(r"</blockquote>", text, flags=re.I))
-    if opens > closes:
-        text = text + ("</blockquote>" * (opens - closes))
-    elif closes > opens:
-        # remove extra closes from end gradually - simple: strip all unmatched by rebuilding
-        pass
-    opens_b = len(re.findall(r"<b>", text, flags=re.I))
-    closes_b = len(re.findall(r"</b>", text, flags=re.I))
-    if opens_b > closes_b:
-        text = text + ("</b>" * (opens_b - closes_b))
-    opens_i = len(re.findall(r"<i>", text, flags=re.I))
-    closes_i = len(re.findall(r"</i>", text, flags=re.I))
-    if opens_i > closes_i:
-        text = text + ("</i>" * (opens_i - closes_i))
-    opens_c = len(re.findall(r"<code>", text, flags=re.I))
-    closes_c = len(re.findall(r"</code>", text, flags=re.I))
-    if opens_c > closes_c:
-        text = text + ("</code>" * (opens_c - closes_c))
+    
+    def _balance(t, open_pat, close_tag):
+        opens = len(re.findall(open_pat, t, flags=re.I))
+        closes = len(re.findall(re.escape(close_tag), t, flags=re.I))
+        if opens > closes:
+            t = t + (close_tag * (opens - closes))
+        elif closes > opens:
+            # remove extra closing tags from the end
+            extra = closes - opens
+            for _ in range(extra):
+                # remove last occurrence of close tag
+                idx = t.lower().rfind(close_tag.lower())
+                if idx >= 0:
+                    t = t[:idx] + t[idx+len(close_tag):]
+        return t
+    
+    text = _balance(text, r"<blockquote[^>]*>", "</blockquote>")
+    text = _balance(text, r"<b>", "</b>")
+    text = _balance(text, r"<i>", "</i>")
+    text = _balance(text, r"<code>", "</code>")
+    text = _balance(text, r"<u>", "</u>")
+    text = _balance(text, r"<s>", "</s>")
+    text = _balance(text, r"<pre>", "</pre>")
+    # expandable attribute is fine on blockquote
     return text
 
 async def build_paginated_keyboard(
@@ -1185,8 +1186,11 @@ async def build_paginated_keyboard(
     skip = page * ITEMS_PER_PAGE
     total_items = collection.count_documents(filter_query)
     
-    # NAYA: Sort by last_modified (descending)
-    items = list(collection.find(filter_query).sort("last_modified", DESCENDING).skip(skip).limit(ITEMS_PER_PAGE))
+    # Sort by last_modified if present, else name
+    try:
+        items = list(collection.find(filter_query).sort("last_modified", DESCENDING).skip(skip).limit(ITEMS_PER_PAGE))
+    except Exception:
+        items = list(collection.find(filter_query).skip(skip).limit(ITEMS_PER_PAGE))
     
     if not items and page == 0:
         return None, InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data=back_callback)]])
@@ -1194,26 +1198,32 @@ async def build_paginated_keyboard(
     buttons = []
     for item in items:
         if "name" in item:
-            # Wider-looking buttons (padding + emoji)
-            nm = item['name']
-            label = f"🎬 {nm}" if len(nm) < 18 else f"🎬 {nm[:20]}"
+            nm = str(item['name'])
+            # Full name, emoji for bigger tap target feel
+            label = f"🎬 {nm}"
+            if len(label) > 64:
+                label = label[:61] + "..."
             buttons.append(InlineKeyboardButton(label, callback_data=f"{item_callback_prefix}{item['name']}"))
         elif "first_name" in item:
             user_id = item['_id']
             first_name = item.get('first_name', f"ID: {user_id}")
             buttons.append(InlineKeyboardButton(first_name, callback_data=f"{item_callback_prefix}{user_id}"))
 
-    keyboard = build_grid_keyboard(buttons, items_per_row=3)  # 3 per row
+    keyboard = build_grid_keyboard(buttons, items_per_row=3)  # 3 per row, 5 rows = 15
     
     page_buttons = []
     if page > 0:
         page_buttons.append(InlineKeyboardButton("⬅️ Prev", callback_data=f"{page_callback_prefix}{page - 1}"))
     if (page + 1) * ITEMS_PER_PAGE < total_items:
-        page_buttons.append(InlineKeyboardButton("Next ➡️", callback_data=f"{page_callback_prefix}{page + 1}"))
+        page_buttons.append(InlineKeyboardButton(f"Next ➡️ ({page+2})", callback_data=f"{page_callback_prefix}{page + 1}"))
+    # Page indicator
+    total_pages = max(1, (total_items + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE)
         
     if page_buttons:
         keyboard.append(page_buttons)
-        
+    if total_items > 0:
+        total_pages = max(1, (total_items + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE)
+        keyboard.append([InlineKeyboardButton(f"📄 {page+1}/{total_pages} ({total_items} items)", callback_data="noop")])
     keyboard.append([InlineKeyboardButton("⬅️ Back", callback_data=back_callback)])
     
     return items, InlineKeyboardMarkup(keyboard)
@@ -1228,6 +1238,36 @@ async def send_donate_thank_you(context: ContextTypes.DEFAULT_TYPE):
         logger.warning(f"Thank you message bhejte waqt error: {e}")
 
 # FIX: Naya Auto-Delete Function (asyncio)
+
+async def admin_reply_temp(update: Update, text: str, seconds: int = 60, **kwargs):
+    """Admin DM message - auto delete after 1 min, no timer shown"""
+    try:
+        if update.message:
+            msg = await update.message.reply_text(text, **kwargs)
+        elif update.callback_query:
+            msg = await update.callback_query.message.reply_text(text, **kwargs)
+        else:
+            return None
+        try:
+            asyncio.create_task(delete_message_later(
+                bot=update.get_bot() if hasattr(update, 'get_bot') else msg.get_bot(),
+                chat_id=msg.chat_id,
+                message_id=msg.message_id,
+                seconds=seconds
+            ))
+        except Exception:
+            pass
+        return msg
+    except Exception as e:
+        logger.error(f"admin_reply_temp: {e}")
+        return None
+
+async def schedule_admin_msg_delete(bot, chat_id, message_id, seconds=60):
+    try:
+        asyncio.create_task(delete_message_later(bot, chat_id, message_id, seconds))
+    except Exception:
+        pass
+
 async def delete_message_later(bot, chat_id: int, message_id: int, seconds: int):
     """asyncio.sleep ka use karke message delete karega"""
     try:
@@ -3521,10 +3561,11 @@ async def post_gen_get_short_link(update: Update, context: ContextTypes.DEFAULT_
         
         # Save short link
         context.user_data['short_link_url'] = short_link_url
-        await update.message.reply_text(
+        m = await update.message.reply_text(
             f"✅ <b>Short Link Saved!</b>\n\n<code>{short_link_url}</code>",
             parse_mode=ParseMode.HTML
         )
+        await schedule_admin_msg_delete(context.bot, m.chat_id, m.message_id, 60)
         
         caption_raw = context.user_data.get('post_caption_raw') or ""
         poster_id = context.user_data.get('post_poster_id')
@@ -3706,29 +3747,43 @@ async def post_gen_send_to_chat(update: Update, context: ContextTypes.DEFAULT_TY
             )
 
         text = await format_message(context, "admin_post_gen_success", {"chat_id": chat_id_raw})
-        await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+        m = await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+        await schedule_admin_msg_delete(context.bot, m.chat_id, m.message_id, 60)
     except Exception as e:
         logger.error(f"Post channel me bhejme me error: {e}")
         text = await format_message(context, "admin_post_gen_error", {"chat_id": chat_id_raw, "e": e})
-        await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+        m = await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+        await schedule_admin_msg_delete(context.bot, m.chat_id, m.message_id, 60)
     context.user_data.clear()
     return ConversationHandler.END
 
 # ============================================
 # ===     POST PREVIEW + EDIT HANDLERS     ===
 # ============================================
-async def _safe_edit_preview(query, text, reply_markup=None):
-    """Photo ya text dono message ko safely edit karta hai"""
+async def _safe_edit_preview(query, text, reply_markup=None, auto_delete_sec=60):
+    """Photo ya text edit; admin DM msgs 1 min baad auto-delete (no timer shown)"""
+    msg = None
     try:
         if query.message.photo:
             await query.edit_message_caption(caption=text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+            msg = query.message
         else:
             await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+            msg = query.message
     except Exception:
         try:
-            await query.message.reply_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+            msg = await query.message.reply_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
         except Exception as e2:
             logger.error(f"_safe_edit_preview failed: {e2}")
+            return
+    if msg and auto_delete_sec:
+        try:
+            await schedule_admin_msg_delete(query.get_bot(), msg.chat_id, msg.message_id, auto_delete_sec)
+        except Exception:
+            try:
+                asyncio.create_task(delete_message_later(query.get_bot(), msg.chat_id, msg.message_id, auto_delete_sec))
+            except Exception:
+                pass
 
 async def post_preview_publish(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -3809,22 +3864,8 @@ async def _rebuild_post_caption(context):
     footer = context.user_data.get('post_edit_footer', '') or ''
     is_quoted = context.user_data.get('post_is_quoted', False)
     
-    # Middle se leading duplicate title lines / solo title blockquotes hatao
-    if title and middle:
-        middle = _re.sub(
-            r'(?:^|\n)\s*(?:<blockquote[^>]*>\s*)?(?:<b>)?' + _re.escape(title) + r'(?:</b>)?\s*(?:</blockquote>)?\s*(?=\n|$)',
-            '',
-            middle,
-            count=1,
-            flags=_re.IGNORECASE
-        ).strip()
-        cleaned = []
-        for ln in middle.split('\n'):
-            plain = _re.sub(r'<[^>]+>', '', ln).strip()
-            if plain.lower() == title.lower():
-                continue
-            cleaned.append(ln)
-        middle = '\n'.join(cleaned).strip()
+    # Sirf empty blockquotes clean; content blockquote MAT hatao
+    if middle:
         middle = _re.sub(r'<blockquote[^>]*>\s*</blockquote>', '', middle).strip()
         context.user_data['post_edit_middle'] = middle
     
