@@ -462,6 +462,11 @@ LANGUAGE_PACKS = {
         "admin_menu_add_content": "➕ <b><f>Add Content</f></b> ➕\n\n<f>What do you want to add?</f>",
         "admin_menu_post_gen": "✍️ <b><f>Post Generator</f></b> ✍️\n\n<f>What type of post do you want to generate?</f>",
         "admin_cancel": "<f>Operation cancelled.</f>",
+        "user_request_limit": "⏳ <b>You can request a movie after the bot cooldown.</b>\n\nLimit: <b>3 requests per day</b>.",
+        "user_request_prompt": "🎬 <b>Request a Movie</b>\n\nApni movie/series ka naam likh ke bhejo.\n\nRemaining today: <b>{remaining}/3</b>\n\n/cancel - Cancel",
+        "user_request_received": "✅ <b>Request received!</b>\n\nDeveloper will update it shortly. Keep patience.",
+        "user_request_admin_notify": "📩 <b>New Movie Request</b>\n\nFrom: {name} (@{username})\nID: <code>{user_id}</code>\n\n{text}\n\n💡 <i>Is message pe Reply karke user ko jawab do.</i>",
+        "user_request_cancelled": "❌ Request cancelled.",
         "user_dl_anime_not_found": "❌ <f>Error: Series/Movie not found.</f>",
         "user_dl_select_season": "<b>{anime_name}</b>\n\n<f>Select season:</f>",
         "user_dl_select_episode": "<b>{anime_name}</b> | <b>Season {season_name}</b>\n\n<f>Select episode:</f>",
@@ -474,6 +479,11 @@ LANGUAGE_PACKS = {
         "admin_menu_add_content": "➕ <b><f>कंटेंट जोड़ें</f></b> ➕\n\n<f>आप क्या जोड़ना चाहते हैं?</f>",
         "admin_menu_post_gen": "✍️ <b><f>पोस्ट जनरेटर</f></b> ✍️\n\n<f>किस तरह की पोस्ट बनानी है?</f>",
         "admin_cancel": "<f>ऑपरेशन रद्द कर दिया गया।</f>",
+        "user_request_limit": "⏳ <b>You can request a movie after the bot cooldown.</b>\n\nLimit: <b>3 requests per day</b>.",
+        "user_request_prompt": "🎬 <b>Request a Movie</b>\n\nApni movie/series ka naam likh ke bhejo.\n\nRemaining today: <b>{remaining}/3</b>\n\n/cancel - Cancel",
+        "user_request_received": "✅ <b>Request received!</b>\n\nDeveloper will update it shortly. Keep patience.",
+        "user_request_admin_notify": "📩 <b>New Movie Request</b>\n\nFrom: {name} (@{username})\nID: <code>{user_id}</code>\n\n{text}\n\n💡 <i>Is message pe Reply karke user ko jawab do.</i>",
+        "user_request_cancelled": "❌ Request cancelled.",
         "user_dl_anime_not_found": "❌ <f>त्रुटि: सीरीज़/मूवी नहीं मिली।</f>",
         "user_dl_select_season": "<b>{anime_name}</b>\n\n<f>सीज़न चुनें:</f>",
         "user_dl_select_episode": "<b>{anime_name}</b> | <b>सीज़न {season_name}</b>\n\n<f>एपिसोड चुनें:</f>",
@@ -486,6 +496,11 @@ LANGUAGE_PACKS = {
         "admin_menu_add_content": "➕ <b><f>কন্টেন্ট যোগ করুন</f></b> ➕\n\n<f>আপনি কী যোগ করতে চান?</f>",
         "admin_menu_post_gen": "✍️ <b><f>পোস্ট জেনারেটর</f></b> ✍️\n\n<f>কী ধরনের পোস্ট তৈরি করবেন?</f>",
         "admin_cancel": "<f>অপারেশন বাতিল করা হয়েছে।</f>",
+        "user_request_limit": "⏳ <b>You can request a movie after the bot cooldown.</b>\n\nLimit: <b>3 requests per day</b>.",
+        "user_request_prompt": "🎬 <b>Request a Movie</b>\n\nApni movie/series ka naam likh ke bhejo.\n\nRemaining today: <b>{remaining}/3</b>\n\n/cancel - Cancel",
+        "user_request_received": "✅ <b>Request received!</b>\n\nDeveloper will update it shortly. Keep patience.",
+        "user_request_admin_notify": "📩 <b>New Movie Request</b>\n\nFrom: {name} (@{username})\nID: <code>{user_id}</code>\n\n{text}\n\n💡 <i>Is message pe Reply karke user ko jawab do.</i>",
+        "user_request_cancelled": "❌ Request cancelled.",
         "user_dl_anime_not_found": "❌ <f>ত্রুটি: সিরিজ/মুভি পাওয়া যায়নি।</f>",
         "user_dl_select_season": "<b>{anime_name}</b>\n\n<f>সিজন বেছে নিন:</f>",
         "user_dl_select_episode": "<b>{anime_name}</b> | <b>সিজন {season_name}</b>\n\n<f>এপিসোড বেছে নিন:</f>",
@@ -498,6 +513,11 @@ LANGUAGE_PACKS = {
         "admin_menu_add_content": "➕ <b><f>إضافة محتوى</f></b> ➕\n\n<f>ماذا تريد أن تضيف؟</f>",
         "admin_menu_post_gen": "✍️ <b><f>مولّد المنشورات</f></b> ✍️\n\n<f>ما نوع المنشور؟</f>",
         "admin_cancel": "<f>تم إلغاء العملية.</f>",
+        "user_request_limit": "⏳ <b>You can request a movie after the bot cooldown.</b>\n\nLimit: <b>3 requests per day</b>.",
+        "user_request_prompt": "🎬 <b>Request a Movie</b>\n\nApni movie/series ka naam likh ke bhejo.\n\nRemaining today: <b>{remaining}/3</b>\n\n/cancel - Cancel",
+        "user_request_received": "✅ <b>Request received!</b>\n\nDeveloper will update it shortly. Keep patience.",
+        "user_request_admin_notify": "📩 <b>New Movie Request</b>\n\nFrom: {name} (@{username})\nID: <code>{user_id}</code>\n\n{text}\n\n💡 <i>Is message pe Reply karke user ko jawab do.</i>",
+        "user_request_cancelled": "❌ Request cancelled.",
         "user_dl_anime_not_found": "❌ <f>خطأ: السلسلة/الفيلم غير موجود.</f>",
         "user_dl_select_season": "<b>{anime_name}</b>\n\n<f>اختر الموسم:</f>",
         "user_dl_select_episode": "<b>{anime_name}</b> | <b>الموسم {season_name}</b>\n\n<f>اختر الحلقة:</f>",
@@ -515,7 +535,19 @@ async def get_default_messages():
     return {
         # === Download Flow ===
         "user_dl_dm_alert": "✅ <f>Check your DM (private chat) with me!</f>",
+        "user_request_limit": "⏳ <b>You can request a movie after the bot cooldown.</b>\n\nLimit: <b>3 requests per day</b>.",
+        "user_request_prompt": "🎬 <b>Request a Movie</b>\n\nApni movie/series ka naam likh ke bhejo.\n\nRemaining today: <b>{remaining}/3</b>\n\n/cancel - Cancel",
+        "user_request_received": "✅ <b>Request received!</b>\n\nDeveloper will update it shortly. Keep patience.",
+        "user_request_admin_notify": "📩 <b>New Movie Request</b>\n\nFrom: {name} (@{username})\nID: <code>{user_id}</code>\n\n{text}\n\n💡 <i>Is message pe Reply karke user ko jawab do.</i>",
+        "user_request_cancelled": "❌ Request cancelled.",
         "user_dl_anime_not_found": "❌ <f>Error: Series/Movie nahi mila.</f>",
+        "request_limit_reached": "⏳ <b>You can request a movie after the bot cooldown.</b>\n\nLimit: <b>3 requests per day</b>.",
+        "request_start": "🎬 <b>Request a Movie</b>\n\nRemaining today: <b>{remaining}/3</b>\n\nApni movie/series ka naam bhejo.\n/cancel - Cancel",
+        "request_received": "✅ <b>Your request has been received.</b>\n\n<i>Developer will update it shortly. Please keep patience.</i>\n\nRemaining today: <b>{remaining}/3</b>",
+        "request_cancelled": "❌ Request cancelled.",
+        "request_admin_notify": "🎬 <b>NEW MOVIE REQUEST</b>\n\nFrom: <b>{name}</b> ({username})\nID: <code>{user_id}</code>\n\nRequest:\n<code>{request_text}</code>\n\n<i>Is message pe Reply karke user ko jawab bhej sakte ho.</i>",
+        "request_dev_reply_prefix": "📩 <b>Developer Reply:</b>\n\n{reply}",
+
         "user_dl_file_error": "❌ <f>Error! {quality} file nahi bhej paya. Please try again.</f>",
         "user_dl_blocked_error": "❌ <f>Error! File nahi bhej paya. Aapne bot ko block kiya hua hai.</f>",
         "user_dl_episodes_not_found": "❌ <f>Error: Is season ke liye episodes nahi mile.</f>",
@@ -1051,6 +1083,7 @@ async def _update_anime_timestamp(anime_name: str):
 (PROMO_GET_VALUE,) = range(105, 106)
 (VERIFY_VIDEO,) = range(106, 107)
 (PBTN_GET_TEXT,) = range(107, 108)
+(REQ_GET_TEXT,) = range(108, 109)
 
 
 # --- NAYA: Global Cancel Function ---
@@ -4734,6 +4767,10 @@ async def bot_messages_menu_gen(update: Update, context: ContextTypes.DEFAULT_TY
         [InlineKeyboardButton("Edit Not Admin", callback_data="msg_edit_user_not_admin")],
         [InlineKeyboardButton("Edit Welcome Admin", callback_data="msg_edit_user_welcome_admin")],
         [InlineKeyboardButton("Edit Welcome User", callback_data="msg_edit_user_welcome_basic")],
+        [InlineKeyboardButton("Edit Request Limit Msg", callback_data="msg_edit_user_request_limit")],
+        [InlineKeyboardButton("Edit Request Prompt", callback_data="msg_edit_user_request_prompt")],
+        [InlineKeyboardButton("Edit Request Received", callback_data="msg_edit_user_request_received")],
+        [InlineKeyboardButton("Edit Request Admin Notify", callback_data="msg_edit_user_request_admin_notify")],
         [InlineKeyboardButton("⬅️ Back", callback_data="admin_menu_messages")]
     ]
     text = await format_message(context, "admin_menu_messages_gen")
@@ -5312,20 +5349,16 @@ async def handle_deep_link_donate(user: User, context: ContextTypes.DEFAULT_TYPE
 
 
 async def handle_deep_link_verify(user: User, context: ContextTypes.DEFAULT_TYPE):
-    """How to Verify - admin post with video/link + Chat with Partner"""
+    """How to Verify - video / link / not set"""
     logger.info(f"User {user.id} opened How to Verify")
     config = await get_config()
     video_id = config.get("verify_video_id")
     verify_url = config.get("links", {}).get("verify")
     caption = config.get("verify_post_caption") or "✅ <b>How to Verify / Download</b>\n\nFollow the guide below."
     
-    # Buttons: How to Verify guide + Chat with Partner (same line)
-    row = []
+    markup = None
     if verify_url:
-        row.append(InlineKeyboardButton(config.get("btn_text_verify") or "How to Verify", url=verify_url))
-    row.append(InlineKeyboardButton("💬 Chat with Partner", callback_data="partner_lang_menu"))
-    keyboard = [row] if row else [[InlineKeyboardButton("💬 Chat with Partner", callback_data="partner_lang_menu")]]
-    markup = InlineKeyboardMarkup(keyboard)
+        markup = InlineKeyboardMarkup([[InlineKeyboardButton(config.get("btn_text_verify") or "How to Verify", url=verify_url)]])
     
     if video_id:
         try:
@@ -5340,109 +5373,194 @@ async def handle_deep_link_verify(user: User, context: ContextTypes.DEFAULT_TYPE
         except Exception as e:
             logger.error(f"Verify video send failed: {e}")
     
-    if verify_url or video_id:
+    if verify_url:
         await context.bot.send_message(
             chat_id=user.id,
-            text=caption if not verify_url else (caption + f"\n\n👉 <a href=\"{verify_url}\">Open Guide</a>"),
+            text=caption + f"\n\n👉 <a href=\"{verify_url}\">Open Guide</a>",
             parse_mode=ParseMode.HTML,
             reply_markup=markup,
             disable_web_page_preview=False
         )
         return
     
-    # Nothing set
     await context.bot.send_message(
         chat_id=user.id,
         text="⚠️ <b>Admin has not set any verification file.</b>\n\nPlease contact admin or try again later.",
-        parse_mode=ParseMode.HTML,
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("💬 Chat with Partner", callback_data="partner_lang_menu")]
-        ])
-    )
-
-async def handle_deep_link_request(user: User, context: ContextTypes.DEFAULT_TYPE):
-    """Request a Movie - 3 per day limit"""
-    allowed, remaining, limit_msg = await check_request_limit(user.id)
-    if not allowed:
-        await context.bot.send_message(chat_id=user.id, text=limit_msg, parse_mode=ParseMode.HTML)
-        return
-    
-    config = await get_config()
-    request_url = config.get("links", {}).get("request")
-    await log_movie_request(user.id)
-    
-    if request_url:
-        await context.bot.send_message(
-            chat_id=user.id,
-            text=f"🎬 <b>Request a Movie</b>\n\nRemaining today: <b>{remaining - 1}/3</b>\n\n👉 <a href=\"{request_url}\">Open Request Form</a>",
-            parse_mode=ParseMode.HTML
-        )
-    else:
-        await context.bot.send_message(
-            chat_id=user.id,
-            text="⚠️ <b>Admin has not set any request link.</b>\n\nPlease contact admin.",
-            parse_mode=ParseMode.HTML
-        )
-
-# --- Chat with Partner ---
-async def partner_lang_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    allowed, left = await check_partner_chat_limit(query.from_user.id)
-    if not allowed:
-        await query.edit_message_text("⏳ <b>Daily chat limit reached (1000).</b>\nTry again tomorrow.", parse_mode=ParseMode.HTML)
-        return
-    text = f"💬 <b>Chat with Partner</b>\n\nSelect language:\n(Remaining today: {left})"
-    keyboard = [
-        [InlineKeyboardButton("English", callback_data="partner_lang_english")],
-        [InlineKeyboardButton("Hindi", callback_data="partner_lang_hindi")],
-        [InlineKeyboardButton("Hinglish", callback_data="partner_lang_hinglish")],
-        [InlineKeyboardButton("Bengali", callback_data="partner_lang_bengali")],
-        [InlineKeyboardButton("Arabic", callback_data="partner_lang_arabic")],
-    ]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
-
-async def partner_lang_select(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    lang = query.data.replace("partner_lang_", "")
-    context.user_data["partner_lang"] = lang
-    context.user_data["partner_history"] = []
-    context.user_data["partner_mode"] = True
-    await query.edit_message_text(
-        f"✅ Language: <b>{lang}</b>\n\nNow send your message. I am your partner.\n\n/stop - End chat",
         parse_mode=ParseMode.HTML
     )
 
-async def partner_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle user messages when partner mode is on"""
-    if not context.user_data.get("partner_mode"):
+
+async def handle_deep_link_request(user: User, context: ContextTypes.DEFAULT_TYPE):
+    """Deep link Request a Movie -> same as /request start"""
+    allowed, remaining, limit_msg = await check_request_limit(user.id)
+    if not allowed:
+        msg = await format_message(context, "user_request_limit") if False else limit_msg
+        try:
+            msg = await format_message(context, "user_request_limit")
+        except Exception:
+            msg = limit_msg
+        await context.bot.send_message(chat_id=user.id, text=msg, parse_mode=ParseMode.HTML)
         return
+    text = await format_message(context, "user_request_prompt", {"remaining": str(remaining)})
+    await context.bot.send_message(chat_id=user.id, text=text, parse_mode=ParseMode.HTML)
+    context.user_data["awaiting_movie_request"] = True
+
+async def request_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """ /request - user movie request (3/day) """
+    user = update.effective_user
+    allowed, remaining, limit_msg = await check_request_limit(user.id)
+    if not allowed:
+        try:
+            msg = await format_message(context, "user_request_limit")
+        except Exception:
+            msg = limit_msg
+        await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
+        return ConversationHandler.END
+    text = await format_message(context, "user_request_prompt", {"remaining": str(remaining)})
+    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+    context.user_data["awaiting_movie_request"] = True
+    return REQ_GET_TEXT
+
+async def request_receive(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """User ne request text bheja"""
+    if not context.user_data.get("awaiting_movie_request"):
+        return ConversationHandler.END
     user = update.effective_user
     text = (update.message.text or "").strip()
     if not text:
-        return
-    if text.lower() in ("/stop", "stop"):
-        context.user_data["partner_mode"] = False
-        context.user_data["partner_history"] = []
-        await update.message.reply_text("👋 Partner chat ended.")
-        return
+        await update.message.reply_text("Please send movie/series name.")
+        return REQ_GET_TEXT
     
-    allowed, left = await check_partner_chat_limit(user.id)
+    allowed, remaining, limit_msg = await check_request_limit(user.id)
     if not allowed:
-        context.user_data["partner_mode"] = False
-        await update.message.reply_text("⏳ Daily chat limit reached (1000). Try again tomorrow.")
+        context.user_data["awaiting_movie_request"] = False
+        try:
+            msg = await format_message(context, "user_request_limit")
+        except Exception:
+            msg = limit_msg
+        await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
+        return ConversationHandler.END
+    
+    await log_movie_request(user.id)
+    context.user_data["awaiting_movie_request"] = False
+    
+    # Auto reply to user
+    try:
+        ok_msg = await format_message(context, "user_request_received")
+    except Exception:
+        ok_msg = "✅ <b>Request received!</b>\n\nDeveloper will update it shortly. Keep patience."
+    await update.message.reply_text(ok_msg, parse_mode=ParseMode.HTML)
+    
+    # Notify admin
+    uname = user.username or "no_username"
+    name = user.full_name or user.first_name or "User"
+    try:
+        admin_text = await format_message(context, "user_request_admin_notify", {
+            "name": name,
+            "username": uname,
+            "user_id": str(user.id),
+            "text": text
+        })
+    except Exception:
+        admin_text = (
+            f"📩 <b>New Movie Request</b>\n\n"
+            f"From: {name} (@{uname})\n"
+            f"ID: <code>{user.id}</code>\n\n"
+            f"{text}\n\n"
+            f"💡 <i>Reply to this message to answer the user.</i>"
+        )
+    
+    # Store mapping: admin message -> user id for reply
+    try:
+        sent = await context.bot.send_message(
+            chat_id=ADMIN_ID,
+            text=admin_text,
+            parse_mode=ParseMode.HTML
+        )
+        # Save reply map in config collection or a small collection
+        db['request_reply_map'].update_one(
+            {"admin_msg_id": sent.message_id},
+            {"$set": {"admin_msg_id": sent.message_id, "user_id": user.id, "chat_id": ADMIN_ID}},
+            upsert=True
+        )
+    except Exception as e:
+        logger.error(f"Admin notify request failed: {e}")
+    
+    # Also try LOG_CHANNEL if set
+    try:
+        if LOG_CHANNEL_ID:
+            await context.bot.send_message(
+                chat_id=int(LOG_CHANNEL_ID),
+                text=admin_text,
+                parse_mode=ParseMode.HTML
+            )
+    except Exception:
+        pass
+    
+    return ConversationHandler.END
+
+
+async def request_text_fallback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Deep link / post button se request mode - conversation ke bahar"""
+    if not context.user_data.get("awaiting_movie_request"):
+        return
+    # Reuse receive logic
+    return await request_receive(update, context)
+
+async def request_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["awaiting_movie_request"] = False
+    try:
+        msg = await format_message(context, "user_request_cancelled")
+    except Exception:
+        msg = "❌ Request cancelled."
+    await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
+    return ConversationHandler.END
+
+async def admin_reply_to_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin replies to a request message -> forward reply to user"""
+    if not update.message or not update.message.reply_to_message:
+        return
+    user = update.effective_user
+    if user.id != ADMIN_ID:
+        # co-admin optional? only main admin for now
+        if not await is_main_admin(user.id):
+            return
+    
+    reply_to = update.message.reply_to_message
+    doc = db['request_reply_map'].find_one({"admin_msg_id": reply_to.message_id})
+    if not doc:
+        return  # not a request message
+    
+    target_user = doc.get("user_id")
+    if not target_user:
         return
     
-    lang = context.user_data.get("partner_lang", "english")
-    history = context.user_data.get("partner_history", [])
-    await context.bot.send_chat_action(user.id, "typing")
-    reply = await call_groq_partner(text, lang, history)
-    history.append({"role": "user", "content": text})
-    history.append({"role": "assistant", "content": reply})
-    context.user_data["partner_history"] = history[-20:]
-    await inc_partner_chat(user.id)
-    await update.message.reply_text(reply)
+    reply_text = update.message.text or update.message.caption or ""
+    try:
+        if update.message.photo:
+            await context.bot.send_photo(
+                chat_id=target_user,
+                photo=update.message.photo[-1].file_id,
+                caption=f"💬 <b>Developer reply:</b>\n\n{reply_text}" if reply_text else "💬 Developer sent a photo.",
+                parse_mode=ParseMode.HTML
+            )
+        elif update.message.video:
+            await context.bot.send_video(
+                chat_id=target_user,
+                video=update.message.video.file_id,
+                caption=f"💬 <b>Developer reply:</b>\n\n{reply_text}" if reply_text else "",
+                parse_mode=ParseMode.HTML
+            )
+        else:
+            await context.bot.send_message(
+                chat_id=target_user,
+                text=f"💬 <b>Developer reply:</b>\n\n{reply_text}",
+                parse_mode=ParseMode.HTML
+            )
+        await update.message.reply_text("✅ Reply sent to user.")
+    except Exception as e:
+        logger.error(f"Admin reply to user failed: {e}")
+        await update.message.reply_text(f"❌ Failed to send: {e}")
 
 
 async def handle_deep_link_download(user: User, context: ContextTypes.DEFAULT_TYPE, payload: str):
@@ -6736,6 +6854,17 @@ def main():
 
     
     # --- Saare handlers ko bot_app me add karo ---
+    # /request system
+    bot_app.add_handler(CommandHandler("request", request_command))
+    bot_app.add_handler(MessageHandler(
+        filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE & filters.REPLY,
+        admin_reply_to_request
+    ), group=2)
+    bot_app.add_handler(MessageHandler(
+        filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE,
+        request_user_message
+    ), group=1)
+    
     bot_app.add_handler(add_anime_conv)
     bot_app.add_handler(add_movie_conv)  # NAYA: Movie
     bot_app.add_handler(add_season_conv)
@@ -6784,11 +6913,7 @@ def main():
     bot_app.add_handler(pbtn_conv)
     bot_app.add_handler(CallbackQueryHandler(language_set, pattern="^lang_"))
     bot_app.add_handler(CallbackQueryHandler(user_verify_howto, pattern="^user_verify_howto$"))
-    bot_app.add_handler(CallbackQueryHandler(partner_lang_menu, pattern="^partner_lang_menu$"))
-    bot_app.add_handler(CallbackQueryHandler(partner_lang_select, pattern="^partner_lang_(english|hindi|hinglish|bengali|arabic)$"))
-    # Partner chat messages - high priority group
-    bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, partner_chat_message), group=1)
-    
+        
     verify_video_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(set_verify_video_start, pattern="^admin_set_verify_video$")],
         states={
@@ -6804,7 +6929,27 @@ def main():
     bot_app.add_handler(merge_anime_conv) # NAYA: New feature (v33)
 
     # Standard commands
-    bot_app.add_handler(CommandHandler("start", start_command)) 
+    bot_app.add_handler(CommandHandler("start", start_command))
+    # /request system
+    request_conv = ConversationHandler(
+        entry_points=[CommandHandler("request", request_command)],
+        states={
+            REQ_GET_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, request_receive)],
+        },
+        fallbacks=[CommandHandler("cancel", request_cancel), CommandHandler("start", request_cancel)],
+        allow_reentry=True
+    )
+    bot_app.add_handler(request_conv)
+    # Admin reply to request (must be outside other convs, group=2)
+    bot_app.add_handler(MessageHandler(
+        filters.REPLY & filters.ChatType.PRIVATE & (filters.TEXT | filters.PHOTO | filters.VIDEO),
+        admin_reply_to_request
+    ), group=2)
+    bot_app.add_handler(MessageHandler(
+        filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE,
+        request_text_fallback
+    ), group=3)
+ 
     bot_app.add_handler(CommandHandler("user", user_command)) 
     bot_app.add_handler(CommandHandler("menu", menu_command)) 
     bot_app.add_handler(CommandHandler("admin", admin_command)) 
