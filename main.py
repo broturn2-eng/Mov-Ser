@@ -3423,10 +3423,15 @@ async def generate_post_ask_chat(update: Update, context: ContextTypes.DEFAULT_T
         context.user_data['original_download_url'] = original_download_url
         context.user_data['is_episode_post'] = context.user_data.get('is_episode_post', False) 
         
-        text = await format_message(context, "admin_post_gen_ask_shortlink", {
-            "original_download_url": original_download_url
-        })
-        
+        # Pehle jaisa: original link dikhao, short link mango
+        text = (
+            f"✅ <b>Post Ready!</b>\n\n"
+            f"Aapka <b>original download link</b>:\n"
+            f"<code>{original_download_url}</code>\n\n"
+            f"Ab iska <b>shortened link</b> reply mein bhejo.\n"
+            f"(Agar short nahi karna: upar wala link copy karke bhej do, ya <code>skip</code> likho)\n\n"
+            f"/cancel - Cancel"
+        )
         try:
             await query.edit_message_text(text, parse_mode=ParseMode.HTML)
         except Exception as edit_err:
@@ -3482,7 +3487,7 @@ async def post_gen_get_short_link(update: Update, context: ContextTypes.DEFAULT_
         # Save short link
         context.user_data['short_link_url'] = short_link_url
         await update.message.reply_text(
-            f"✅ <b>Short link saved!</b>\n\n<code>{short_link_url}</code>\n\nPreview bana raha hoon...",
+            f"✅ <b>Short Link Saved!</b>\n\n<code>{short_link_url}</code>",
             parse_mode=ParseMode.HTML
         )
         
@@ -5951,9 +5956,13 @@ async def request_receive(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def request_text_fallback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Deep link / post button se request mode - conversation ke bahar"""
-    if not context.user_data.get("awaiting_movie_request"):
+    # IMPORTANT: post generator short-link step ko mat churao
+    if not context.user_data.get("awaiting_movie_request") and not context.user_data.get("request_mode"):
         return
-    # Reuse receive logic
+    # Agar post gen short link state active lage (original link set + caption raw) to skip
+    if context.user_data.get("original_download_url") and context.user_data.get("post_caption_raw") is not None:
+        if not context.user_data.get("awaiting_movie_request"):
+            return
     return await request_receive(update, context)
 
 async def request_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
