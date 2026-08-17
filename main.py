@@ -3761,6 +3761,19 @@ async def post_gen_get_short_link(update: Update, context: ContextTypes.DEFAULT_
             context.user_data['post_edit_title'] = anime_name or ''
             rest = caption_formatted or ""
             context.user_data['post_is_complex'] = True
+            # Title quote ke andar dikhe (agar pehle se nahi hai)
+            if anime_name and anime_name not in (rest or ''):
+                import re as _re2
+                if '<blockquote' in (rest or '').lower():
+                    rest = _re2.sub(
+                        r'(<blockquote[^>]*>)',
+                        rf'\1\n<b>{anime_name}</b>\n',
+                        rest,
+                        count=1,
+                        flags=_re2.I
+                    )
+                else:
+                    rest = f"<b>{anime_name}</b>\n\n{rest}"
         
         lines = rest.split('\n')
         footer_idx = None
@@ -4089,14 +4102,32 @@ async def post_edit_title_save(update: Update, context: ContextTypes.DEFAULT_TYP
     old_title = context.user_data.get('post_edit_title', '') or ''
     context.user_data['post_edit_title'] = new_title
     
-    # Middle + footer mein bhi purana title replace (quote ke andar bhi)
-    # Sirf plain text replace, tags ke andar carefully
+    # Middle + footer mein purana title replace
     for key in ('post_edit_middle', 'post_edit_footer'):
         part = context.user_data.get(key, '') or ''
         if old_title and old_title in part:
-            # Avoid breaking tags: replace only outside of tags where possible
             part = part.replace(old_title, new_title)
             context.user_data[key] = part
+    
+    # Complex / quote caption: title quote ke ANDAR dikhana hai
+    # Agar middle mein title nahi mila to blockquote ke start pe insert karo
+    middle = context.user_data.get('post_edit_middle', '') or ''
+    if new_title and new_title not in middle:
+        if '<blockquote' in middle.lower():
+            # <blockquote...> ke turant baad title daalo
+            middle = _re.sub(
+                r'(<blockquote[^>]*>)',
+                rf'\1\n<b>{new_title}</b>\n',
+                middle,
+                count=1,
+                flags=_re.I
+            )
+        else:
+            middle = f"<b>{new_title}</b>\n\n{middle}"
+        context.user_data['post_edit_middle'] = middle
+    elif old_title and old_title in middle and old_title != new_title:
+        # already replaced above
+        pass
     
     caption = await _rebuild_post_caption(context)
     caption = sanitize_telegram_html(caption or "")
@@ -6748,8 +6779,7 @@ async def download_button_handler(update: Update, context: ContextTypes.DEFAULT_
                 })
             except Exception:
                 warning_template = f"⚠️ <b>Auto-delete in {time_str}</b>"
-            if "{time}" not in (warning_template or "") and "Auto-delete" not in (warning_template or "") and time_str not in (warning_template or ""):
-                warning_template = (warning_template or "") + f"\n⏳ Remaining: <b>{time_str}</b>"
+            # Remaining sirf neeche status message pe dikhega — file caption pe static Remaining mat lagao
             
             file_msg_ids = []  # for live remaining refresh on the file posts themselves
             for quality in sorted_q_list:
@@ -6978,8 +7008,7 @@ async def download_button_handler(update: Update, context: ContextTypes.DEFAULT_
                 })
             except Exception:
                 warning_template = f"⚠️ <b>Auto-delete in {time_str}</b>"
-            if "{time}" not in (warning_template or "") and "Auto-delete" not in (warning_template or "") and time_str not in (warning_template or ""):
-                warning_template = (warning_template or "") + f"\n⏳ Remaining: <b>{time_str}</b>"
+            # Remaining sirf neeche status message pe dikhega — file caption pe static Remaining mat lagao
             
             msg = f"🎬 <b>{anime_name}</b>\n\nQuality select karein ya files bhej raha hoon..."
             sent_msg = await context.bot.send_message(user_id, msg, parse_mode=ParseMode.HTML)
