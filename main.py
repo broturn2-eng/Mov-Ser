@@ -236,6 +236,8 @@ try:
     config_collection = db['config']
     request_logs_collection = db['request_logs']  # movie request limits
     partner_chat_collection = db['partner_chats']  # AI chat daily limits
+    movie_requests_collection = db['movie_requests']  # admin chats panel
+    request_bans_collection = db['request_bans']  # temp ban from requests
     
     animes_collection.create_index([("name", ASCENDING)])
     animes_collection.create_index([("created_at", DESCENDING)]) 
@@ -299,10 +301,28 @@ async def deny_co_admin_feature(update: Update, context: ContextTypes.DEFAULT_TY
 # --- NAYA v34: User Stats Helper ---
 
 # --- Request limit: 3 per day per user ---
+async def is_request_banned(user_id: int) -> tuple:
+    """Returns (banned: bool, message: str)"""
+    from datetime import datetime
+    doc = request_bans_collection.find_one({"user_id": user_id})
+    if not doc:
+        return False, ""
+    until = doc.get("until")
+    if until and until > datetime.utcnow():
+        mins = int((until - datetime.utcnow()).total_seconds() // 60)
+        return True, f"🚫 You are temporarily banned from requests.\nTry again after <b>{mins} minutes</b>."
+    # expired
+    request_bans_collection.delete_one({"user_id": user_id})
+    return False, ""
+
 async def check_request_limit(user_id: int) -> tuple:
     """Returns (allowed: bool, remaining: int, message: str)"""
     from datetime import datetime, timedelta
     now = datetime.utcnow()
+    # Ban check (3 hours)
+    ban = db['request_bans'].find_one({"user_id": user_id, "until": {"$gt": now}})
+    if ban:
+        return False, 0, "🚫 <b>You are temporarily banned from requesting.</b>\n\nTry again after a few hours."
     day_ago = now - timedelta(hours=24)
     count = request_logs_collection.count_documents({
         "user_id": user_id,
@@ -3535,19 +3555,34 @@ def _get_preview_keyboard():
     ]
 
 async def _rebuild_post_caption(context):
-    """Title + middle + footer se caption banata hai — double title nahi"""
+    """Title + middle + footer — temporary only, no DB. No double title."""
     import re as _re
     title = context.user_data.get('post_edit_title', '') or ''
     middle = context.user_data.get('post_edit_middle', '') or ''
     footer = context.user_data.get('post_edit_footer', '') or ''
     is_quoted = context.user_data.get('post_is_quoted', False)
     
-    # Agar middle mein title pehle se hai (blockquote/text), to outer bold title mat lagao
-    middle_plain = _re.sub(r'<[^>]+>', '', middle).lower() if middle else ''
-    title_already_in_middle = bool(title and title.lower() in middle_plain)
+    # Middle se leading duplicate title lines / solo title blockquotes hatao
+    if title and middle:
+        middle = _re.sub(
+            r'(?:^|\n)\s*(?:<blockquote[^>]*>\s*)?(?:<b>)?' + _re.escape(title) + r'(?:</b>)?\s*(?:</blockquote>)?\s*(?=\n|$)',
+            '',
+            middle,
+            count=1,
+            flags=_re.IGNORECASE
+        ).strip()
+        cleaned = []
+        for ln in middle.split('\n'):
+            plain = _re.sub(r'<[^>]+>', '', ln).strip()
+            if plain.lower() == title.lower():
+                continue
+            cleaned.append(ln)
+        middle = '\n'.join(cleaned).strip()
+        middle = _re.sub(r'<blockquote[^>]*>\s*</blockquote>', '', middle).strip()
+        context.user_data['post_edit_middle'] = middle
     
     parts = []
-    if title and not title_already_in_middle:
+    if title:
         parts.append(f"<b>{title}</b>")
     if middle:
         parts.append(middle)
@@ -4808,6 +4843,189 @@ async def bot_messages_menu_admin(update: Update, context: ContextTypes.DEFAULT_
     return M_MENU_ADMIN
 
 # NAYA: Admin Settings Menu
+
+# ============================================
+# ===     ADMIN CHATS (REQUESTS)           ===
+# ============================================
+async def admin_chats_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if query: await query.answer()
+    if await is_co_admin_only(update.effective_user.id):
+        await deny_co_admin_feature(update, context, "Chats")
+        return
+    pending = db['movie_requests'].count_documents({"status": "pending"})
+    replied = db['movie_requests'].count_documents({"status": "replied"})
+    text = (
+        f"💬 <b>Chats / Requests</b>\n\n"
+        f"📩 Pending: <b>{pending}</b>\n"
+        f"✅ Replied: <b>{replied}</b>\n\n"
+        f"Choose section:"
+    )
+    keyboard = [
+        [InlineKeyboardButton(f"📩 Requested ({pending})", callback_data="chats_pending_0")],
+        [InlineKeyboardButton(f"✅ Replied ({replied})", callback_data="chats_replied_0")],
+        [InlineKeyboardButton("🚫 Ban User (3 hours)", callback_data="chats_ban_start")],
+        [InlineKeyboardButton("⬅️ Back", callback_data="admin_menu_admin_settings")],
+    ]
+    if query:
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+    else:
+        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+
+async def chats_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    data = query.data  # chats_pending_0 or chats_replied_0
+    parts = data.split("_")
+    status = "pending" if parts[1] == "pending" else "replied"
+    page = int(parts[2]) if len(parts) > 2 else 0
+    per = 8
+    cursor = db['movie_requests'].find({"status": status}).sort("created_at", -1).skip(page * per).limit(per)
+    items = list(cursor)
+    total = db['movie_requests'].count_documents({"status": status})
+    
+    title = "📩 Requested" if status == "pending" else "✅ Replied"
+    if not items:
+        text = f"{title}\n\nNo items."
+        keyboard = [[InlineKeyboardButton("⬅️ Back", callback_data="admin_chats_menu")]]
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+        return
+    
+    text = f"<b>{title}</b> (page {page + 1})\n\nSelect a request:"
+    keyboard = []
+    for doc in items:
+        rid = str(doc["_id"])
+        label = f"{doc.get('name', '?')[:12]}: {doc.get('text', '')[:30]}"
+        keyboard.append([InlineKeyboardButton(label, callback_data=f"chats_view_{rid}")])
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton("⬅️ Prev", callback_data=f"chats_{status}_{page-1}"))
+    if (page + 1) * per < total:
+        nav.append(InlineKeyboardButton("Next ➡️", callback_data=f"chats_{status}_{page+1}"))
+    if nav:
+        keyboard.append(nav)
+    keyboard.append([InlineKeyboardButton("⬅️ Back", callback_data="admin_chats_menu")])
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+
+async def chats_view(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    from bson import ObjectId
+    rid = query.data.replace("chats_view_", "")
+    try:
+        doc = db['movie_requests'].find_one({"_id": ObjectId(rid)})
+    except Exception:
+        doc = None
+    if not doc:
+        await query.answer("Not found", show_alert=True)
+        return
+    context.user_data["chat_reply_req_id"] = rid
+    context.user_data["chat_reply_user_id"] = doc.get("user_id")
+    text = (
+        f"📩 <b>Request</b>\n\n"
+        f"From: <b>{doc.get('name')}</b> (@{doc.get('username')})\n"
+        f"ID: <code>{doc.get('user_id')}</code>\n"
+        f"Status: <b>{doc.get('status')}</b>\n\n"
+        f"<b>Text:</b>\n<code>{doc.get('text')}</code>\n"
+    )
+    if doc.get("admin_reply"):
+        text += f"\n<b>Your reply:</b>\n{doc.get('admin_reply')}\n"
+    keyboard = [
+        [InlineKeyboardButton("💬 Reply to User", callback_data=f"chats_reply_{rid}")],
+        [InlineKeyboardButton("🚫 Ban 3h", callback_data=f"chats_banuser_{doc.get('user_id')}")],
+        [InlineKeyboardButton("⬅️ Back", callback_data="admin_chats_menu")],
+    ]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+
+async def chats_reply_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    rid = query.data.replace("chats_reply_", "")
+    context.user_data["chat_reply_req_id"] = rid
+    await query.edit_message_text(
+        "💬 User ko reply bhejo (text):\n\n/cancel - Cancel",
+        parse_mode=ParseMode.HTML
+    )
+    return CHATS_REPLY
+
+async def chats_reply_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    from datetime import datetime
+    from bson import ObjectId
+    rid = context.user_data.get("chat_reply_req_id")
+    reply = update.message.text.strip()
+    if not rid:
+        await update.message.reply_text("Error. Open Chats again.")
+        return ConversationHandler.END
+    try:
+        doc = db['movie_requests'].find_one({"_id": ObjectId(rid)})
+    except Exception:
+        doc = None
+    if not doc:
+        await update.message.reply_text("Request not found.")
+        return ConversationHandler.END
+    uid = doc.get("user_id")
+    try:
+        await context.bot.send_message(
+            chat_id=uid,
+            text=f"💬 <b>Developer reply:</b>\n\n{reply}",
+            parse_mode=ParseMode.HTML
+        )
+        db['movie_requests'].update_one(
+            {"_id": ObjectId(rid)},
+            {"$set": {"status": "replied", "admin_reply": reply, "replied_at": datetime.utcnow()}}
+        )
+        await update.message.reply_text("✅ Reply user ko bhej diya. (Chats → Replied)")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Fail: {e}")
+    context.user_data.pop("chat_reply_req_id", None)
+    return ConversationHandler.END
+
+async def chats_ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    from datetime import datetime, timedelta
+    uid = int(query.data.replace("chats_banuser_", ""))
+    until = datetime.utcnow() + timedelta(hours=3)
+    db['request_bans'].update_one(
+        {"user_id": uid},
+        {"$set": {"user_id": uid, "until": until, "banned_at": datetime.utcnow()}},
+        upsert=True
+    )
+    await query.answer("User banned 3 hours", show_alert=True)
+    try:
+        await context.bot.send_message(
+            chat_id=uid,
+            text="🚫 You are temporarily banned from requesting movies (3 hours)."
+        )
+    except Exception:
+        pass
+
+async def chats_ban_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_text(
+        "🚫 User ID bhejo jise 3 hours ke liye request se ban karna hai:\n\n/cancel - Cancel",
+        parse_mode=ParseMode.HTML
+    )
+    return CHATS_BAN_ID
+
+async def chats_ban_id_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    from datetime import datetime, timedelta
+    try:
+        uid = int(update.message.text.strip())
+    except Exception:
+        await update.message.reply_text("Invalid user ID. Numbers only.")
+        return CHATS_BAN_ID
+    until = datetime.utcnow() + timedelta(hours=3)
+    db['request_bans'].update_one(
+        {"user_id": uid},
+        {"$set": {"user_id": uid, "until": until, "banned_at": datetime.utcnow()}},
+        upsert=True
+    )
+    await update.message.reply_text(f"✅ User <code>{uid}</code> banned for 3 hours.", parse_mode=ParseMode.HTML)
+    return ConversationHandler.END
+
+
 async def admin_settings_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = update.effective_user.id
@@ -4825,6 +5043,7 @@ async def admin_settings_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
         [InlineKeyboardButton("🚫 Remove Co-Admin", callback_data="admin_remove_co_admin")],
         [InlineKeyboardButton("👥 List Co-Admins", callback_data="admin_list_co_admin")],
         [InlineKeyboardButton(f"📍 Default Publish Chat: {default_chat}", callback_data="admin_set_default_chat")],
+        [InlineKeyboardButton("💬 Chats (Requests)", callback_data="admin_chats_menu")],
         [InlineKeyboardButton("📢 Promo Channels (Thank You)", callback_data="admin_promo_channels")],
         [InlineKeyboardButton("🔘 Post Buttons Text", callback_data="admin_post_buttons")],
         [InlineKeyboardButton("🌐 Bot Language", callback_data="admin_set_language")],
@@ -5441,8 +5660,26 @@ async def request_receive(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
         return ConversationHandler.END
     
+    from datetime import datetime
     await log_movie_request(user.id)
     context.user_data["awaiting_movie_request"] = False
+    
+    uname = user.username or "no_username"
+    name = user.full_name or user.first_name or "User"
+    
+    # Save to DB for Admin Chats panel
+    req_doc = {
+        "user_id": user.id,
+        "name": name,
+        "username": uname,
+        "text": text,
+        "status": "pending",  # pending | replied
+        "admin_reply": None,
+        "created_at": datetime.utcnow(),
+        "replied_at": None,
+    }
+    ins = db['movie_requests'].insert_one(req_doc)
+    req_id = str(ins.inserted_id)
     
     # Auto reply to user
     try:
@@ -5451,51 +5688,19 @@ async def request_receive(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ok_msg = "✅ <b>Request received!</b>\n\nDeveloper will update it shortly. Keep patience."
     await update.message.reply_text(ok_msg, parse_mode=ParseMode.HTML)
     
-    # Notify admin
-    uname = user.username or "no_username"
-    name = user.full_name or user.first_name or "User"
+    # Light notify admin (once) - full list in Admin Settings → Chats
     try:
-        admin_text = await format_message(context, "user_request_admin_notify", {
-            "name": name,
-            "username": uname,
-            "user_id": str(user.id),
-            "text": text
-        })
-    except Exception:
-        admin_text = (
-            f"📩 <b>New Movie Request</b>\n\n"
-            f"From: {name} (@{uname})\n"
-            f"ID: <code>{user.id}</code>\n\n"
-            f"{text}\n\n"
-            f"💡 <i>Reply to this message to answer the user.</i>"
-        )
-    
-    # Store mapping: admin message -> user id for reply
-    try:
-        sent = await context.bot.send_message(
+        await context.bot.send_message(
             chat_id=ADMIN_ID,
-            text=admin_text,
+            text=(
+                f"📩 <b>New request</b> from {name}\n"
+                f"<code>{text[:200]}</code>\n\n"
+                f"Open <b>Admin Settings → Chats</b> to view / reply / ban."
+            ),
             parse_mode=ParseMode.HTML
         )
-        # Save reply map in config collection or a small collection
-        db['request_reply_map'].update_one(
-            {"admin_msg_id": sent.message_id},
-            {"$set": {"admin_msg_id": sent.message_id, "user_id": user.id, "chat_id": ADMIN_ID}},
-            upsert=True
-        )
     except Exception as e:
-        logger.error(f"Admin notify request failed: {e}")
-    
-    # Also try LOG_CHANNEL if set
-    try:
-        if LOG_CHANNEL_ID:
-            await context.bot.send_message(
-                chat_id=int(LOG_CHANNEL_ID),
-                text=admin_text,
-                parse_mode=ParseMode.HTML
-            )
-    except Exception:
-        pass
+        logger.error(f"Admin notify failed: {e}")
     
     return ConversationHandler.END
 
@@ -6892,6 +7097,24 @@ def main():
     bot_app.add_handler(CallbackQueryHandler(promo_channels_menu, pattern="^admin_promo_channels$"))
     bot_app.add_handler(CallbackQueryHandler(language_menu, pattern="^admin_set_language$"))
     bot_app.add_handler(CallbackQueryHandler(post_buttons_menu, pattern="^admin_post_buttons$"))
+    bot_app.add_handler(CallbackQueryHandler(admin_chats_menu, pattern="^admin_chats_menu$"))
+    bot_app.add_handler(CallbackQueryHandler(chats_list, pattern="^chats_(pending|replied)_"))
+    bot_app.add_handler(CallbackQueryHandler(chats_view, pattern="^chats_view_"))
+    bot_app.add_handler(CallbackQueryHandler(chats_ban_user, pattern="^chats_banuser_"))
+    
+    chats_reply_conv = ConversationHandler(
+        entry_points=[
+            CallbackQueryHandler(chats_reply_start, pattern="^chats_reply_"),
+            CallbackQueryHandler(chats_ban_start, pattern="^chats_ban_start$"),
+        ],
+        states={
+            CHATS_REPLY: [MessageHandler(filters.TEXT & ~filters.COMMAND, chats_reply_save)],
+            CHATS_BAN_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, chats_ban_id_save)],
+        },
+        fallbacks=global_fallbacks + admin_menu_fallback,
+        allow_reentry=True
+    )
+    bot_app.add_handler(chats_reply_conv)
     bot_app.add_handler(CallbackQueryHandler(post_btn_toggle, pattern="^ptoggle_"))
     bot_app.add_handler(CallbackQueryHandler(btn_layout_menu, pattern="^admin_btn_layout$"))
     bot_app.add_handler(CallbackQueryHandler(btn_layout_select, pattern="^blayout_sel_"))
