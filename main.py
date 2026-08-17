@@ -212,7 +212,9 @@ try:
     MONGO_URI = os.getenv("MONGO_URI")
     ADMIN_ID = int(os.getenv("ADMIN_ID"))
     LOG_CHANNEL_ID = os.getenv("LOG_CHANNEL_ID") 
-    WEBHOOK_URL = os.environ.get('WEBHOOK_URL') 
+    WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
+    GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")  # Optional - Chat with Partner
+    DEVELOPER_CONTACT = os.getenv("DEVELOPER_CONTACT", "")  # e.g. https://t.me/username
     
     if not BOT_TOKEN or not MONGO_URI or not ADMIN_ID or not LOG_CHANNEL_ID:
         logger.error("Error: Secrets missing. BOT_TOKEN, MONGO_URI, ADMIN_ID, aur LOG_CHANNEL_ID check karo.")
@@ -231,7 +233,9 @@ try:
     db = client['AnimeBotDB']
     users_collection = db['users']
     animes_collection = db['animes'] 
-    config_collection = db['config'] 
+    config_collection = db['config']
+    request_logs_collection = db['request_logs']  # movie request limits
+    partner_chat_collection = db['partner_chats']  # AI chat daily limits
     
     animes_collection.create_index([("name", ASCENDING)])
     animes_collection.create_index([("created_at", DESCENDING)]) 
@@ -262,7 +266,127 @@ async def is_co_admin(user_id: int) -> bool:
     config = await get_config()
     return user_id in config.get("co_admins", [])
 
+async def is_co_admin_only(user_id: int) -> bool:
+    """True if co-admin but NOT main admin"""
+    if user_id == ADMIN_ID:
+        return False
+    return await is_co_admin(user_id)
+
+async def deny_co_admin_feature(update: Update, context: ContextTypes.DEFAULT_TYPE, feature_name: str = "this feature"):
+    """Co-admin ko block + Contact Developer button"""
+    config = await get_config()
+    dev_link = config.get("developer_contact") or DEVELOPER_CONTACT or ""
+    text = (
+        f"❌ <b>Access Denied</b>\n\n"
+        f"Co-Admins cannot use <b>{feature_name}</b>.\n"
+        f"Please contact the developer."
+    )
+    keyboard = []
+    if dev_link:
+        keyboard.append([InlineKeyboardButton("📞 Contact Developer", url=dev_link if dev_link.startswith("http") else f"https://t.me/{dev_link.lstrip('@')}")])
+    keyboard.append([InlineKeyboardButton("⬅️ Back", callback_data="admin_menu")])
+    markup = InlineKeyboardMarkup(keyboard)
+    query = update.callback_query
+    if query:
+        await query.answer("Access denied", show_alert=True)
+        try:
+            await query.edit_message_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+        except Exception:
+            await context.bot.send_message(query.from_user.id, text, reply_markup=markup, parse_mode=ParseMode.HTML)
+    elif update.message:
+        await update.message.reply_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+
 # --- NAYA v34: User Stats Helper ---
+
+# --- Request limit: 3 per day per user ---
+async def check_request_limit(user_id: int) -> tuple:
+    """Returns (allowed: bool, remaining: int, message: str)"""
+    from datetime import datetime, timedelta
+    now = datetime.utcnow()
+    day_ago = now - timedelta(hours=24)
+    count = request_logs_collection.count_documents({
+        "user_id": user_id,
+        "created_at": {"$gte": day_ago}
+    })
+    limit = 3
+    remaining = max(0, limit - count)
+    if count >= limit:
+        return False, 0, "⏳ <b>You can request a movie after the bot cooldown.</b>\n\nLimit: <b>3 requests per day</b>."
+    return True, remaining, ""
+
+async def log_movie_request(user_id: int):
+    from datetime import datetime
+    request_logs_collection.insert_one({
+        "user_id": user_id,
+        "created_at": datetime.utcnow()
+    })
+
+# --- Partner chat limit: 1000 replies per day ---
+async def check_partner_chat_limit(user_id: int) -> tuple:
+    from datetime import datetime, timedelta
+    now = datetime.utcnow()
+    start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    doc = partner_chat_collection.find_one({"user_id": user_id, "date": start.strftime("%Y-%m-%d")})
+    count = (doc or {}).get("count", 0)
+    if count >= 1000:
+        return False, 0
+    return True, 1000 - count
+
+async def inc_partner_chat(user_id: int):
+    from datetime import datetime
+    day = datetime.utcnow().strftime("%Y-%m-%d")
+    partner_chat_collection.update_one(
+        {"user_id": user_id, "date": day},
+        {"$inc": {"count": 1}, "$setOnInsert": {"user_id": user_id, "date": day}},
+        upsert=True
+    )
+
+async def call_groq_partner(user_message: str, language: str, history: list = None) -> str:
+    """Groq free API - partner style chat"""
+    if not GROQ_API_KEY:
+        return "⚠️ AI Partner is not configured. Admin must set GROQ_API_KEY."
+    lang_map = {
+        "english": "English",
+        "hindi": "Hindi",
+        "hinglish": "Hinglish (Hindi+English mix)",
+        "bengali": "Bengali",
+        "arabic": "Arabic",
+    }
+    lang_name = lang_map.get(language, "English")
+    system = (
+        f"You are a friendly chat partner. Reply only in {lang_name}. "
+        f"Be helpful, short and natural. You help users about movies/series requests casually. "
+        f"Do not mention you are an AI unless asked."
+    )
+    messages = [{"role": "system", "content": system}]
+    if history:
+        messages.extend(history[-10:])
+    messages.append({"role": "user", "content": user_message})
+    try:
+        import urllib.request
+        import json as _json
+        req = urllib.request.Request(
+            "https://api.groq.com/openai/v1/chat/completions",
+            data=_json.dumps({
+                "model": "llama-3.3-70b-versatile",
+                "messages": messages,
+                "max_tokens": 400,
+                "temperature": 0.7,
+            }).encode(),
+            headers={
+                "Authorization": f"Bearer {GROQ_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = _json.loads(resp.read().decode())
+            return data["choices"][0]["message"]["content"].strip()
+    except Exception as e:
+        logger.error(f"Groq API error: {e}")
+        return "⚠️ Partner is busy right now. Please try again later."
+
+
 async def increment_user_interaction(user_id: int):
     """User ki interaction count badhayega."""
     try:
@@ -2110,6 +2234,10 @@ async def add_content_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
     
 async def manage_content_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, from_message: bool = False):
+    user_id = update.effective_user.id
+    if await is_co_admin_only(user_id):
+        await deny_co_admin_feature(update, context, "Delete Content")
+        return
     query = update.callback_query
     if query: await query.answer()
     
@@ -3154,21 +3282,37 @@ async def post_gen_get_short_link(update: Update, context: ContextTypes.DEFAULT_
     btn_request = InlineKeyboardButton(t_request, url=request_url)
     btn_download = InlineKeyboardButton(t_download, url=short_link_url)
     
-    if is_episode_post:
-        keyboard = [
-            [btn_verify, btn_request],
-            [btn_donate],
-            [btn_download],
-        ]
-    else:
-        # Backup | How to Verify
-        # Donate | Request a Movie
-        # DOWNLOAD (full width)
-        keyboard = [
-            [btn_backup, btn_verify],
-            [btn_donate, btn_request],
-            [btn_download],
-        ]
+    # Buttons map
+    btn_map = {
+        "backup": btn_backup,
+        "verify": btn_verify,
+        "donate": btn_donate,
+        "request": btn_request,
+        "download": btn_download,
+    }
+    show = {
+        "backup": config.get("btn_show_backup", True),
+        "verify": config.get("btn_show_verify", True),
+        "donate": config.get("btn_show_donate", True),
+        "request": config.get("btn_show_request", True),
+        "download": config.get("btn_show_download", True),
+    }
+    # Movable layout from config (list of rows of button keys)
+    layout = config.get("post_button_layout") or [
+        ["backup", "verify"],
+        ["donate", "request"],
+        ["download"],
+    ]
+    keyboard = []
+    for row_keys in layout:
+        row = []
+        for key in row_keys:
+            if show.get(key, True) and key in btn_map:
+                row.append(btn_map[key])
+        if row:
+            keyboard.append(row)
+    if not keyboard:
+        keyboard = [[btn_download]]
     
     context.user_data['post_keyboard'] = InlineKeyboardMarkup(keyboard)
     font_settings = {"font": "default", "style": "normal"}
@@ -4525,6 +4669,10 @@ async def other_links_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def bot_messages_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    user_id = update.effective_user.id
+    if await is_co_admin_only(user_id):
+        await deny_co_admin_feature(update, context, "Bot Messages")
+        return ConversationHandler.END
     if query: await query.answer()
     
     keyboard = [
@@ -4614,6 +4762,10 @@ async def bot_messages_menu_admin(update: Update, context: ContextTypes.DEFAULT_
 # NAYA: Admin Settings Menu
 async def admin_settings_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    user_id = update.effective_user.id
+    if await is_co_admin_only(user_id):
+        await deny_co_admin_feature(update, context, "Admin Settings")
+        return
     if query: await query.answer()
     
     config = await get_config()
@@ -4732,7 +4884,14 @@ async def post_buttons_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"<b>Request Link:</b> <code>{request_link}</code>\n\n"
         f"Button text / links / video set karo."
     )
+    def _on(flag, default=True):
+        return "✅" if config.get(flag, default) else "❌"
     keyboard = [
+        [InlineKeyboardButton(f"{_on('btn_show_backup')} Backup ON/OFF", callback_data="ptoggle_backup")],
+        [InlineKeyboardButton(f"{_on('btn_show_verify')} Verify ON/OFF", callback_data="ptoggle_verify")],
+        [InlineKeyboardButton(f"{_on('btn_show_donate')} Donate ON/OFF", callback_data="ptoggle_donate")],
+        [InlineKeyboardButton(f"{_on('btn_show_request')} Request ON/OFF", callback_data="ptoggle_request")],
+        [InlineKeyboardButton(f"{_on('btn_show_download')} Download ON/OFF", callback_data="ptoggle_download")],
         [InlineKeyboardButton(f"✏️ Backup: {t_backup[:15]}", callback_data="pbtn_backup")],
         [InlineKeyboardButton(f"✏️ How to Verify: {t_verify[:15]}", callback_data="pbtn_verify")],
         [InlineKeyboardButton(f"✏️ Donate: {t_donate[:15]}", callback_data="pbtn_donate")],
@@ -4741,9 +4900,152 @@ async def post_buttons_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🔗 Set Verify Link", callback_data="admin_set_verify_link")],
         [InlineKeyboardButton("🎬 Set Verify How-To Video", callback_data="admin_set_verify_video")],
         [InlineKeyboardButton("🎬 Set Request Link", callback_data="admin_set_request_link")],
+        [InlineKeyboardButton("↕️ Move Buttons Layout", callback_data="admin_btn_layout")],
+        [InlineKeyboardButton("📞 Set Developer Contact (Co-Admin only)", callback_data="admin_set_dev_contact")],
         [InlineKeyboardButton("⬅️ Back", callback_data="admin_menu_admin_settings")]
     ]
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+
+
+
+async def btn_layout_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show current layout + move controls"""
+    query = update.callback_query
+    await query.answer()
+    config = await get_config()
+    layout = config.get("post_button_layout") or [
+        ["backup", "verify"],
+        ["donate", "request"],
+        ["download"],
+    ]
+    # Flatten with positions
+    names = {"backup": "Backup", "verify": "How to Verify", "donate": "Donate", "request": "Request", "download": "Download"}
+    lines = ["↕️ <b>Button Layout</b>\n"]
+    for ri, row in enumerate(layout):
+        lines.append(f"<b>Row {ri+1}:</b> " + " | ".join(names.get(k, k) for k in row))
+    lines.append("\nSelect button to move:")
+    keyboard = []
+    for ri, row in enumerate(layout):
+        for ci, key in enumerate(row):
+            keyboard.append([InlineKeyboardButton(
+                f"📍 {names.get(key, key)} (R{ri+1})",
+                callback_data=f"blayout_sel_{ri}_{ci}"
+            )])
+    keyboard.append([InlineKeyboardButton("🔄 Reset Default Layout", callback_data="blayout_reset")])
+    keyboard.append([InlineKeyboardButton("⬅️ Back", callback_data="admin_post_buttons")])
+    await query.edit_message_text("\n".join(lines), reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+
+async def btn_layout_select(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    parts = query.data.split("_")  # blayout_sel_r_c
+    ri, ci = int(parts[2]), int(parts[3])
+    context.user_data["blayout_ri"] = ri
+    context.user_data["blayout_ci"] = ci
+    config = await get_config()
+    layout = config.get("post_button_layout") or [["backup", "verify"], ["donate", "request"], ["download"]]
+    key = layout[ri][ci]
+    names = {"backup": "Backup", "verify": "How to Verify", "donate": "Donate", "request": "Request", "download": "Download"}
+    text = f"Moving: <b>{names.get(key, key)}</b>\n\nChoose action:"
+    keyboard = [
+        [InlineKeyboardButton("⬆️ Row Up", callback_data="blayout_act_up")],
+        [InlineKeyboardButton("⬇️ Row Down", callback_data="blayout_act_down")],
+        [InlineKeyboardButton("⬅️ Left", callback_data="blayout_act_left")],
+        [InlineKeyboardButton("➡️ Right", callback_data="blayout_act_right")],
+        [InlineKeyboardButton("🔀 New Row (alone)", callback_data="blayout_act_alone")],
+        [InlineKeyboardButton("⬅️ Back", callback_data="admin_btn_layout")],
+    ]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+
+async def btn_layout_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    act = query.data.replace("blayout_act_", "")
+    config = await get_config()
+    layout = [list(r) for r in (config.get("post_button_layout") or [["backup", "verify"], ["donate", "request"], ["download"]])]
+    ri = context.user_data.get("blayout_ri", 0)
+    ci = context.user_data.get("blayout_ci", 0)
+    if ri >= len(layout) or ci >= len(layout[ri]):
+        await btn_layout_menu(update, context)
+        return
+    key = layout[ri].pop(ci)
+    if not layout[ri]:
+        layout.pop(ri)
+        if ri > 0:
+            ri -= 1
+    
+    if act == "up":
+        new_ri = max(0, ri - 1)
+        if new_ri >= len(layout):
+            layout.insert(0, [key])
+        else:
+            layout[new_ri].insert(min(ci, len(layout[new_ri])), key)
+    elif act == "down":
+        new_ri = min(len(layout), ri + 1)
+        if new_ri >= len(layout):
+            layout.append([key])
+        else:
+            layout[new_ri].insert(min(ci, len(layout[new_ri])), key)
+    elif act == "left":
+        # same row, earlier position
+        if ri >= len(layout):
+            layout.append([key])
+        else:
+            layout[ri].insert(max(0, ci - 1), key)
+    elif act == "right":
+        if ri >= len(layout):
+            layout.append([key])
+        else:
+            layout[ri].insert(min(len(layout[ri]), ci + 1), key)
+    elif act == "alone":
+        # put on its own full-width row at same index
+        layout.insert(min(ri + 1, len(layout)), [key])
+    else:
+        # fallback put back
+        if ri < len(layout):
+            layout[ri].insert(ci, key)
+        else:
+            layout.append([key])
+    
+    # clean empty rows
+    layout = [r for r in layout if r]
+    config_collection.update_one({"_id": "bot_config"}, {"$set": {"post_button_layout": layout}}, upsert=True)
+    await btn_layout_menu(update, context)
+
+async def btn_layout_reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer("Reset to default")
+    default = [["backup", "verify"], ["donate", "request"], ["download"]]
+    config_collection.update_one({"_id": "bot_config"}, {"$set": {"post_button_layout": default}}, upsert=True)
+    await btn_layout_menu(update, context)
+
+
+async def post_btn_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    key_map = {
+        "ptoggle_backup": "btn_show_backup",
+        "ptoggle_verify": "btn_show_verify",
+        "ptoggle_donate": "btn_show_donate",
+        "ptoggle_request": "btn_show_request",
+        "ptoggle_download": "btn_show_download",
+    }
+    conf_key = key_map.get(query.data)
+    if not conf_key:
+        return
+    config = await get_config()
+    current = config.get(conf_key, True)
+    config_collection.update_one({"_id": "bot_config"}, {"$set": {conf_key: not current}}, upsert=True)
+    await post_buttons_menu(update, context)
+
+async def set_dev_contact_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_text(
+        "📞 <b>Developer Contact</b>\\n\\nTelegram username or link bhejo:\\n(Example: @username or https://t.me/username)\\n\\n/cancel - Cancel",
+        parse_mode=ParseMode.HTML
+    )
+    return PBTN_GET_TEXT
 
 async def post_btn_text_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -4767,13 +5069,16 @@ async def post_btn_text_start(update: Update, context: ContextTypes.DEFAULT_TYPE
     return PBTN_GET_TEXT
 
 async def post_btn_text_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    key = context.user_data.get('pbtn_key')
+    key = context.user_data.get('pbtn_key') or "developer_contact"
     text = update.message.text.strip()
-    if not key:
-        await update.message.reply_text("Error.")
-        return ConversationHandler.END
+    # If came from dev contact without pbtn_key
+    if not context.user_data.get('pbtn_key') and key == "developer_contact":
+        pass
+    elif not context.user_data.get('pbtn_key'):
+        # default from set_dev_contact_start
+        key = "developer_contact"
     config_collection.update_one({"_id": "bot_config"}, {"$set": {key: text}}, upsert=True)
-    await update.message.reply_text(f"✅ Button text saved:\n<code>{text}</code>", parse_mode=ParseMode.HTML)
+    await update.message.reply_text(f"✅ Saved:\n<code>{text}</code>", parse_mode=ParseMode.HTML)
     context.user_data.clear()
     return ConversationHandler.END
 
@@ -4996,29 +5301,40 @@ async def handle_deep_link_donate(user: User, context: ContextTypes.DEFAULT_TYPE
 
 
 async def handle_deep_link_verify(user: User, context: ContextTypes.DEFAULT_TYPE):
-    """How to Verify - video / link / not set message"""
+    """How to Verify - admin post with video/link + Chat with Partner"""
     logger.info(f"User {user.id} opened How to Verify")
     config = await get_config()
     video_id = config.get("verify_video_id")
     verify_url = config.get("links", {}).get("verify")
+    caption = config.get("verify_post_caption") or "✅ <b>How to Verify / Download</b>\n\nFollow the guide below."
+    
+    # Buttons: How to Verify guide + Chat with Partner (same line)
+    row = []
+    if verify_url:
+        row.append(InlineKeyboardButton(config.get("btn_text_verify") or "How to Verify", url=verify_url))
+    row.append(InlineKeyboardButton("💬 Chat with Partner", callback_data="partner_lang_menu"))
+    keyboard = [row] if row else [[InlineKeyboardButton("💬 Chat with Partner", callback_data="partner_lang_menu")]]
+    markup = InlineKeyboardMarkup(keyboard)
     
     if video_id:
         try:
             await context.bot.send_video(
                 chat_id=user.id,
                 video=video_id,
-                caption="✅ <b>How to Verify / Download</b>\n\nWatch this video and follow the steps.",
-                parse_mode=ParseMode.HTML
+                caption=caption,
+                parse_mode=ParseMode.HTML,
+                reply_markup=markup
             )
             return
         except Exception as e:
             logger.error(f"Verify video send failed: {e}")
     
-    if verify_url:
+    if verify_url or video_id:
         await context.bot.send_message(
             chat_id=user.id,
-            text=f"✅ <b>How to Verify / Download</b>\n\n👉 <a href=\"{verify_url}\">Open Guide</a>",
+            text=caption if not verify_url else (caption + f"\n\n👉 <a href=\"{verify_url}\">Open Guide</a>"),
             parse_mode=ParseMode.HTML,
+            reply_markup=markup,
             disable_web_page_preview=False
         )
         return
@@ -5029,18 +5345,25 @@ async def handle_deep_link_verify(user: User, context: ContextTypes.DEFAULT_TYPE
         text="⚠️ <b>Admin has not set any verification file.</b>\n\nPlease contact admin or try again later.",
         parse_mode=ParseMode.HTML,
         reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("📩 Request a Movie", url=config.get("links", {}).get("request") or f"https://t.me/{(await context.bot.get_me()).username}")]
-        ]) if config.get("links", {}).get("request") else None
+            [InlineKeyboardButton("💬 Chat with Partner", callback_data="partner_lang_menu")]
+        ])
     )
 
 async def handle_deep_link_request(user: User, context: ContextTypes.DEFAULT_TYPE):
-    """Request a Movie - redirect info if no external link was used"""
+    """Request a Movie - 3 per day limit"""
+    allowed, remaining, limit_msg = await check_request_limit(user.id)
+    if not allowed:
+        await context.bot.send_message(chat_id=user.id, text=limit_msg, parse_mode=ParseMode.HTML)
+        return
+    
     config = await get_config()
     request_url = config.get("links", {}).get("request")
+    await log_movie_request(user.id)
+    
     if request_url:
         await context.bot.send_message(
             chat_id=user.id,
-            text=f"🎬 <b>Request a Movie</b>\n\n👉 <a href=\"{request_url}\">Open Request Form</a>",
+            text=f"🎬 <b>Request a Movie</b>\n\nRemaining today: <b>{remaining - 1}/3</b>\n\n👉 <a href=\"{request_url}\">Open Request Form</a>",
             parse_mode=ParseMode.HTML
         )
     else:
@@ -5049,6 +5372,67 @@ async def handle_deep_link_request(user: User, context: ContextTypes.DEFAULT_TYP
             text="⚠️ <b>Admin has not set any request link.</b>\n\nPlease contact admin.",
             parse_mode=ParseMode.HTML
         )
+
+# --- Chat with Partner ---
+async def partner_lang_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    allowed, left = await check_partner_chat_limit(query.from_user.id)
+    if not allowed:
+        await query.edit_message_text("⏳ <b>Daily chat limit reached (1000).</b>\nTry again tomorrow.", parse_mode=ParseMode.HTML)
+        return
+    text = f"💬 <b>Chat with Partner</b>\n\nSelect language:\n(Remaining today: {left})"
+    keyboard = [
+        [InlineKeyboardButton("English", callback_data="partner_lang_english")],
+        [InlineKeyboardButton("Hindi", callback_data="partner_lang_hindi")],
+        [InlineKeyboardButton("Hinglish", callback_data="partner_lang_hinglish")],
+        [InlineKeyboardButton("Bengali", callback_data="partner_lang_bengali")],
+        [InlineKeyboardButton("Arabic", callback_data="partner_lang_arabic")],
+    ]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+
+async def partner_lang_select(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    lang = query.data.replace("partner_lang_", "")
+    context.user_data["partner_lang"] = lang
+    context.user_data["partner_history"] = []
+    context.user_data["partner_mode"] = True
+    await query.edit_message_text(
+        f"✅ Language: <b>{lang}</b>\n\nNow send your message. I am your partner.\n\n/stop - End chat",
+        parse_mode=ParseMode.HTML
+    )
+
+async def partner_chat_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle user messages when partner mode is on"""
+    if not context.user_data.get("partner_mode"):
+        return
+    user = update.effective_user
+    text = (update.message.text or "").strip()
+    if not text:
+        return
+    if text.lower() in ("/stop", "stop"):
+        context.user_data["partner_mode"] = False
+        context.user_data["partner_history"] = []
+        await update.message.reply_text("👋 Partner chat ended.")
+        return
+    
+    allowed, left = await check_partner_chat_limit(user.id)
+    if not allowed:
+        context.user_data["partner_mode"] = False
+        await update.message.reply_text("⏳ Daily chat limit reached (1000). Try again tomorrow.")
+        return
+    
+    lang = context.user_data.get("partner_lang", "english")
+    history = context.user_data.get("partner_history", [])
+    await context.bot.send_chat_action(user.id, "typing")
+    reply = await call_groq_partner(text, lang, history)
+    history.append({"role": "user", "content": text})
+    history.append({"role": "assistant", "content": reply})
+    context.user_data["partner_history"] = history[-20:]
+    await inc_partner_chat(user.id)
+    await update.message.reply_text(reply)
+
 
 async def handle_deep_link_download(user: User, context: ContextTypes.DEFAULT_TYPE, payload: str):
     """Deep link se /start=dl... ko handle karega"""
@@ -5277,9 +5661,9 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE, from
     
     if not await is_main_admin(user_id):
         # Co-Admin Menu
+        # Co-admin: no Delete, no Admin Settings, no Bot Messages
         keyboard = [
             [InlineKeyboardButton("➕ Add Content", callback_data="admin_menu_add_content")],
-            [InlineKeyboardButton("🗑️ Delete Content", callback_data="admin_menu_manage_content")], 
             [InlineKeyboardButton("✏️ Edit Content", callback_data="admin_menu_edit_content")], 
             [InlineKeyboardButton("✍️ Post Generator", callback_data="admin_post_gen")],
             [
@@ -6369,9 +6753,17 @@ def main():
     bot_app.add_handler(CallbackQueryHandler(promo_channels_menu, pattern="^admin_promo_channels$"))
     bot_app.add_handler(CallbackQueryHandler(language_menu, pattern="^admin_set_language$"))
     bot_app.add_handler(CallbackQueryHandler(post_buttons_menu, pattern="^admin_post_buttons$"))
+    bot_app.add_handler(CallbackQueryHandler(post_btn_toggle, pattern="^ptoggle_"))
+    bot_app.add_handler(CallbackQueryHandler(btn_layout_menu, pattern="^admin_btn_layout$"))
+    bot_app.add_handler(CallbackQueryHandler(btn_layout_select, pattern="^blayout_sel_"))
+    bot_app.add_handler(CallbackQueryHandler(btn_layout_action, pattern="^blayout_act_"))
+    bot_app.add_handler(CallbackQueryHandler(btn_layout_reset, pattern="^blayout_reset$"))
     
     pbtn_conv = ConversationHandler(
-        entry_points=[CallbackQueryHandler(post_btn_text_start, pattern="^pbtn_")],
+        entry_points=[
+            CallbackQueryHandler(post_btn_text_start, pattern="^pbtn_"),
+            CallbackQueryHandler(set_dev_contact_start, pattern="^admin_set_dev_contact$"),
+        ],
         states={
             PBTN_GET_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, post_btn_text_save)]
         },
@@ -6381,6 +6773,10 @@ def main():
     bot_app.add_handler(pbtn_conv)
     bot_app.add_handler(CallbackQueryHandler(language_set, pattern="^lang_"))
     bot_app.add_handler(CallbackQueryHandler(user_verify_howto, pattern="^user_verify_howto$"))
+    bot_app.add_handler(CallbackQueryHandler(partner_lang_menu, pattern="^partner_lang_menu$"))
+    bot_app.add_handler(CallbackQueryHandler(partner_lang_select, pattern="^partner_lang_(english|hindi|hinglish|bengali|arabic)$"))
+    # Partner chat messages - high priority group
+    bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, partner_chat_message), group=1)
     
     verify_video_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(set_verify_video_start, pattern="^admin_set_verify_video$")],
