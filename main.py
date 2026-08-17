@@ -3410,8 +3410,8 @@ async def post_gen_get_short_link(update: Update, context: ContextTypes.DEFAULT_
     donate_url = f"https://t.me/{bot_uname}?start=donate"
     # How to Verify → always open bot with start=verify
     verify_bot_url = f"https://t.me/{bot_uname}?start=verify"
-    # Request a Movie → admin set link, else bot
-    request_url = links.get("request") or f"https://t.me/{bot_uname}?start=request"
+    # Request a Movie → ALWAYS open bot for in-bot request flow
+    request_url = f"https://t.me/{bot_uname}?start=request"
     
     btn_backup = InlineKeyboardButton(t_backup, url=backup_url)
     btn_donate = InlineKeyboardButton(t_donate, url=donate_url)
@@ -4949,7 +4949,7 @@ async def admin_chats_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton(f"📩 Requested ({pending})", callback_data="chats_pending_0")],
         [InlineKeyboardButton(f"✅ Replied ({replied})", callback_data="chats_replied_0")],
         [InlineKeyboardButton("🚫 Ban User (3 hours)", callback_data="chats_ban_start")],
-        [InlineKeyboardButton("⬅️ Back", callback_data="admin_menu_admin_settings")],
+        [InlineKeyboardButton("⬅️ Back", callback_data="admin_menu")],
     ]
     if query:
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
@@ -5127,7 +5127,6 @@ async def admin_settings_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
         [InlineKeyboardButton("🚫 Remove Co-Admin", callback_data="admin_remove_co_admin")],
         [InlineKeyboardButton("👥 List Co-Admins", callback_data="admin_list_co_admin")],
         [InlineKeyboardButton(f"📍 Default Publish Chat: {default_chat}", callback_data="admin_set_default_chat")],
-        [InlineKeyboardButton("💬 Chats (Requests)", callback_data="admin_chats_menu")],
         [InlineKeyboardButton("📢 Promo Channels (Thank You)", callback_data="admin_promo_channels")],
         [InlineKeyboardButton("🔘 Post Buttons Text", callback_data="admin_post_buttons")],
         [InlineKeyboardButton("🌐 Bot Language", callback_data="admin_set_language")],
@@ -6127,7 +6126,8 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE, from
              # NAYA LAYOUT (1x1)
             [InlineKeyboardButton("⚙ Bot Messages", callback_data="admin_menu_messages")],
              # NAYA LAYOUT (1x1)
-            [InlineKeyboardButton("🛠️ Admin Settings", callback_data="admin_menu_admin_settings")] 
+            [InlineKeyboardButton("🛠️ Admin Settings", callback_data="admin_menu_admin_settings")],
+            [InlineKeyboardButton("💬 Chats (Requests)", callback_data="admin_chats_menu")]
         ]
         admin_menu_text = await format_message(context, "admin_panel_main")
     
