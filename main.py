@@ -3163,6 +3163,44 @@ async def handle_preview_delete_save(update: Update, context: ContextTypes.DEFAU
     except ValueError:
         await update.message.reply_text("Sirf number bhejo (seconds).")
 
+async def set_promo_delete_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Promo (thank you) message auto-delete timer"""
+    query = update.callback_query
+    await query.answer()
+    config = await get_config()
+    current = int(config.get("promo_thank_you_delete_seconds") or 120)
+    await query.edit_message_text(
+        f"📢 <b>Promo Message Auto-Delete</b>\n\n"
+        f"Abhi: <b>{current} seconds</b> ({current // 60}m {current % 60}s)\n\n"
+        f"Naya time <b>seconds</b> mein bhejo (min 10).\n\n/cancel - Cancel",
+        parse_mode=ParseMode.HTML,
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="admin_menu_auto_delete")]])
+    )
+    context.user_data["awaiting_promo_delete"] = True
+    return
+
+async def handle_promo_delete_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.user_data.get("awaiting_promo_delete"):
+        return
+    try:
+        secs = int(update.message.text.strip())
+        if secs < 10:
+            await update.message.reply_text("Minimum 10 seconds.")
+            return
+        config_collection.update_one(
+            {"_id": "bot_config"},
+            {"$set": {"promo_thank_you_delete_seconds": secs}},
+            upsert=True
+        )
+        context.user_data.pop("awaiting_promo_delete", None)
+        m, s = divmod(secs, 60)
+        await update.message.reply_text(
+            f"✅ Promo delete time set to <b>{secs}s</b> ({m}m {s}s).",
+            parse_mode=ParseMode.HTML
+        )
+    except ValueError:
+        await update.message.reply_text("Sirf number bhejo (seconds).")
+
 async def auto_delete_settings_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """All auto-delete timers in one place"""
     query = update.callback_query
@@ -3179,13 +3217,13 @@ async def auto_delete_settings_menu(update: Update, context: ContextTypes.DEFAUL
     text = (
         "⏱️ <b>Auto-Delete Time Settings</b>\n\n"
         f"📁 <b>File Delete:</b> {_fmt(file_secs)} ({file_secs}s)\n"
-        f"🙏 <b>Thank You / Promo:</b> {_fmt(thank_secs)} ({thank_secs}s)\n"
+        f"📢 <b>Promo Message:</b> {_fmt(thank_secs)} ({thank_secs}s)\n"
         f"👑 <b>Admin Preview Msgs:</b> {_fmt(admin_secs)} ({admin_secs}s)\n\n"
         "Kaunsa timer change karna hai?"
     )
     keyboard = [
         [InlineKeyboardButton(f"📁 File Delete Time ({_fmt(file_secs)})", callback_data="admin_set_delete_time")],
-        [InlineKeyboardButton(f"🙏 Thank You Delete ({_fmt(thank_secs)})", callback_data="promo_set_timer")],
+        [InlineKeyboardButton(f"📢 Promo Delete Time ({_fmt(thank_secs)})", callback_data="admin_set_promo_delete")],
         [InlineKeyboardButton(f"👑 Admin Preview Delete ({_fmt(admin_secs)})", callback_data="admin_set_preview_delete")],
         [InlineKeyboardButton("⬅️ Back to Admin Menu", callback_data="admin_menu")],
     ]
@@ -5958,7 +5996,7 @@ async def promo_channels_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
         [InlineKeyboardButton(f"✏️ Button 1 Text: {b1[:20]}", callback_data="promo_set_btn1")],
         [InlineKeyboardButton(f"✏️ Button 2 Text: {b2[:20]}", callback_data="promo_set_btn2")],
         [InlineKeyboardButton("✏️ Edit Thank You Message", callback_data="promo_set_msg")],
-        [InlineKeyboardButton(f"⏱️ Thank You Delete Timer ({thank_secs}s)", callback_data="promo_set_timer")],
+        [InlineKeyboardButton(f"⏱️ Promo Delete Timer ({thank_secs}s)", callback_data="promo_set_timer")],
         [InlineKeyboardButton("⬅️ Back", callback_data="admin_menu_admin_settings")]
     ]
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
@@ -5981,7 +6019,7 @@ async def promo_set_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = "✏️ <b>Button 2</b> ka text bhejo:\n(Example: Join Channel 2 / More Content)\n\n/cancel - Cancel"
     elif data == "promo_set_timer":
         context.user_data['promo_setting'] = "promo_thank_you_delete_seconds"
-        text = "⏱️ Thank You message delete timer (seconds) bhejo:\nExample: <code>120</code> (2 min)\n\n/cancel - Cancel"
+        text = "⏱️ Promo message delete timer (seconds) bhejo:\nExample: <code>120</code> (2 min)\n\n/cancel - Cancel"
     else:
         context.user_data['promo_setting'] = "promo_thank_you_msg"
         text = "✏️ Thank You message bhejo:\n\n/cancel - Cancel"
@@ -7736,7 +7774,7 @@ def main():
     # NAYA: Promo Channels Conversation
     promo_conv = ConversationHandler(
         entry_points=[
-            CallbackQueryHandler(promo_set_start, pattern="^promo_set_1$|^promo_set_2$|^promo_set_msg$|^promo_set_btn1$|^promo_set_btn2$")
+            CallbackQueryHandler(promo_set_start, pattern="^promo_set_1$|^promo_set_2$|^promo_set_msg$|^promo_set_btn1$|^promo_set_btn2$|^promo_set_timer$")
         ],
         states={
             PROMO_GET_VALUE: [
@@ -7813,7 +7851,9 @@ def main():
     bot_app.add_handler(broadcast_conv) # NAYA v34
     bot_app.add_handler(CallbackQueryHandler(auto_delete_settings_menu, pattern="^admin_menu_auto_delete$"))
     bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_preview_delete_save), group=5)
+    bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_promo_delete_save), group=5)
     bot_app.add_handler(CallbackQueryHandler(set_admin_preview_delete_start, pattern="^admin_set_preview_delete$"))
+    bot_app.add_handler(CallbackQueryHandler(set_promo_delete_start, pattern="^admin_set_promo_delete$"))
     bot_app.add_handler(set_delete_time_conv) 
     bot_app.add_handler(set_messages_conv) 
     bot_app.add_handler(appearance_conv)
