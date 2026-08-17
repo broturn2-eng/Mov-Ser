@@ -3857,7 +3857,7 @@ def _get_preview_keyboard():
     ]
 
 async def _rebuild_post_caption(context):
-    """Title + middle + footer — temporary only, no DB. No double title."""
+    """Title + middle + footer — temporary only, no DB. No double title. Keep existing blockquotes."""
     import re as _re
     title = context.user_data.get('post_edit_title', '') or ''
     middle = context.user_data.get('post_edit_middle', '') or ''
@@ -3867,25 +3867,14 @@ async def _rebuild_post_caption(context):
     # Sirf empty blockquotes clean; content blockquote MAT hatao
     if middle:
         middle = _re.sub(r'<blockquote[^>]*>\s*</blockquote>', '', middle).strip()
-    
-    # Double title fix: middle se leading title (plain / <b> / blockquote ke andar) hatao
-    # Taaki bahar wala <b>title</b> + andar wala na dikhe
-    if title and middle:
-        esc = _re.escape(title)
-        # leading: optional blockquote + optional <b> + title + optional </b> + whitespace/newlines
-        middle = _re.sub(
-            rf'^(?:\s*<blockquote[^>]*>\s*)?(?:<b>)?\s*{esc}\s*(?:</b>)?\s*(?:\n+|\s+)?',
-            '',
-            middle,
-            count=1,
-            flags=_re.IGNORECASE
-        ).strip()
-        # agar ab empty blockquote start reh gaya to clean
-        middle = _re.sub(r'^<blockquote[^>]*>\s*', '', middle, count=1).strip()
         context.user_data['post_edit_middle'] = middle
     
+    has_blockquote = bool(middle and '<blockquote' in middle.lower())
+    
     parts = []
-    if title:
+    # Agar middle mein pehle se blockquote hai to bahar wala title MAT lagao (double + quote style dono fix)
+    # Warna normal title + middle
+    if title and not has_blockquote:
         parts.append(f"<b>{title}</b>")
     if middle:
         parts.append(middle)
@@ -3894,7 +3883,8 @@ async def _rebuild_post_caption(context):
     
     caption = "\n\n".join(parts) if parts else context.user_data.get('post_caption_formatted', '')
     
-    if is_quoted and caption and "<blockquote" not in caption:
+    # Toggle Quote: only wrap if no blockquote already present
+    if is_quoted and caption and "<blockquote" not in caption.lower():
         caption = f"<blockquote>{caption}</blockquote>"
     
     context.user_data['post_caption_formatted'] = caption
@@ -3957,7 +3947,7 @@ async def post_edit_title_save(update: Update, context: ContextTypes.DEFAULT_TYP
         # Short forms bhi try (e.g. "P & P" if present as separate quoted title line)
     
     caption = await _rebuild_post_caption(context)
-    await update.message.reply_text("✅ Title updated (bahar + andar dono).", parse_mode=ParseMode.HTML)
+    await update.message.reply_text("✅ Title updated.", parse_mode=ParseMode.HTML)
     await update.message.reply_text("👁️ <b>POST PREVIEW</b>\n\n" + caption, reply_markup=InlineKeyboardMarkup(_get_preview_keyboard()), parse_mode=ParseMode.HTML)
     return PG_PREVIEW
 
