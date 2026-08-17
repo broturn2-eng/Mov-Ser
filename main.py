@@ -1142,11 +1142,75 @@ def build_grid_keyboard(buttons, items_per_row=2):
 # NAYA (v10): Pagination Helper
 
 def sanitize_telegram_html(text: str) -> str:
-    """Minimal HTML fix — blockquote/bold/font tags PRESERVE, sirf balance"""
+    """Fix broken HTML so Telegram accepts it. Keep blockquotes + bold."""
     if not text:
         return text or ""
     import re
     text = text.replace("<br>", "\n").replace("<br/>", "\n").replace("<br />", "\n")
+    
+    # Fix common broken patterns from templates:
+    # <b>LABEL: value  without closing </b> before next tag/newline
+    # Close <b> that was opened for a label if </b> missing before : or end of short run
+    # More reliable: walk and close open inline tags before block boundaries
+    
+    INLINE_OPENS = {
+        '<b>': '</b>', '<i>': '</i>', '<u>': '</u>', '<s>': '</s>',
+        '<code>': '</code>', '<strong>': '</strong>', '<em>': '</em>',
+    }
+    
+    def _close_open_inline(t: str) -> str:
+        """Before every </blockquote> and at EOF, close any open inline tags."""
+        lower = t.lower()
+        stack = []  # list of close tags needed
+        out = []
+        i = 0
+        while i < len(t):
+            matched = False
+            # check open tags
+            for ot, ct in INLINE_OPENS.items():
+                if lower.startswith(ot, i):
+                    stack.append(ct)
+                    out.append(t[i:i+len(ot)])
+                    i += len(ot)
+                    matched = True
+                    break
+                if lower.startswith(ct, i):
+                    # pop if matches
+                    if stack and stack[-1] == ct:
+                        stack.pop()
+                    out.append(t[i:i+len(ct)])
+                    i += len(ct)
+                    matched = True
+                    break
+            if matched:
+                continue
+            if lower.startswith('</blockquote>', i):
+                # close all open inline before blockquote ends
+                while stack:
+                    out.append(stack.pop())
+                out.append(t[i:i+13])
+                i += 13
+                continue
+            if lower.startswith('<blockquote', i):
+                # close open inline before new block starts
+                while stack:
+                    out.append(stack.pop())
+                # copy until >
+                j = t.find('>', i)
+                if j < 0:
+                    out.append(t[i])
+                    i += 1
+                else:
+                    out.append(t[i:j+1])
+                    i = j + 1
+                continue
+            out.append(t[i])
+            i += 1
+        while stack:
+            out.append(stack.pop())
+        return ''.join(out)
+    
+    text = _close_open_inline(text)
     
     def _balance(t, open_pat, close_tag):
         opens = len(re.findall(open_pat, t, flags=re.I))
@@ -1154,7 +1218,6 @@ def sanitize_telegram_html(text: str) -> str:
         if opens > closes:
             t = t + (close_tag * (opens - closes))
         elif closes > opens:
-            # extra closing tags hatao (end se)
             extra = closes - opens
             for _ in range(extra):
                 idx = t.lower().rfind(close_tag.lower())
@@ -1162,7 +1225,6 @@ def sanitize_telegram_html(text: str) -> str:
                     t = t[:idx] + t[idx+len(close_tag):]
         return t
     
-    # Order: inner tags first, blockquote last so structure survives
     text = _balance(text, r"<b>", "</b>")
     text = _balance(text, r"<i>", "</i>")
     text = _balance(text, r"<code>", "</code>")
@@ -1171,6 +1233,7 @@ def sanitize_telegram_html(text: str) -> str:
     text = _balance(text, r"<pre>", "</pre>")
     text = _balance(text, r"<blockquote[^>]*>", "</blockquote>")
     return text
+
 
 async def build_paginated_keyboard(
     collection, 
@@ -4131,6 +4194,8 @@ async def post_edit_desc_start(update: Update, context: ContextTypes.DEFAULT_TYP
     query = update.callback_query
     await query.answer()
     current = context.user_data.get('post_edit_middle', '') or ''
+    current = sanitize_telegram_html(current)  # show clean tags
+    context.user_data['post_edit_middle'] = current
     # Show raw so user can keep blockquote tags
     msg = "2️⃣ <b>Edit Description (middle block)</b>\n\n"
     msg += "Neeche current text hai. Copy karke change karke bhejo.\n"
@@ -7875,4 +7940,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-q
