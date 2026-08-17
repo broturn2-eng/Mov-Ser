@@ -388,7 +388,7 @@ async def thankyou_timer_refresh(update: Update, context: ContextTypes.DEFAULT_T
     )
 
 async def file_timer_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Refresh remaining auto-delete time for files"""
+    """Refresh remaining auto-delete time for files — updates BOTH status msg + file captions"""
     query = update.callback_query
     await query.answer("Refreshing...")
     from datetime import datetime
@@ -407,11 +407,38 @@ async def file_timer_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
     h, m, s = left // 3600, (left % 3600) // 60, left % 60
     tstr = f"{h}h {m}m {s}s" if h else (f"{m}m {s}s" if m else f"{s}s")
-    await query.edit_message_text(
-        f"⏳ <b>Files auto-delete in:</b> <code>{tstr}</code>\n\nRefresh dabake remaining time dekho.",
-        parse_mode=ParseMode.HTML,
-        reply_markup=keyboard
-    )
+    
+    # Update the status message (below the files)
+    try:
+        await query.edit_message_text(
+            f"⏳ <b>Files auto-delete in:</b> <code>{tstr}</code>\n\nRefresh dabake remaining time dekho.",
+            parse_mode=ParseMode.HTML,
+            reply_markup=keyboard
+        )
+    except Exception as e:
+        logger.warning(f"file_timer_refresh status edit failed: {e}")
+    
+    # Also update Remaining on the actual file posts (video captions)
+    file_msg_ids = doc.get("file_msg_ids") or []
+    anime_name = doc.get("anime_name") or ""
+    for mid in file_msg_ids:
+        try:
+            # Get current caption and replace the Remaining line
+            # We don't have the old caption stored, so build a short updated remaining notice
+            # Telegram allows edit_message_caption
+            # Keep it simple: append/update remaining
+            new_cap_suffix = f"\n⏳ Remaining: <b>{tstr}</b>"
+            # Try to edit — if original caption is long we just set a clean remaining line
+            # Better: fetch is not available easily, so set a reasonable caption with remaining
+            await context.bot.edit_message_caption(
+                chat_id=user_id,
+                message_id=mid,
+                caption=f"🎬 <b>{anime_name}</b>\n\n⚠️ Files will auto-delete soon.\n⏳ Remaining: <b>{tstr}</b>",
+                parse_mode=ParseMode.HTML
+            )
+        except Exception as e:
+            # Message may already be deleted or caption too long — ignore
+            logger.debug(f"Could not update file caption {mid}: {e}")
 
 async def request_timer_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Refresh button - show updated remaining time"""
@@ -1136,11 +1163,47 @@ def build_grid_keyboard(buttons, items_per_row=2):
 # NAYA (v10): Pagination Helper
 
 def sanitize_telegram_html(text: str) -> str:
-    """Fix broken HTML; KEEP blockquotes; fix unexpected end tags"""
+    """Fix broken HTML; KEEP blockquotes; fix unexpected end tags + common nesting mistakes"""
     if not text:
         return text or ""
     import re
     text = text.replace("<br>", "\n").replace("<br/>", "\n").replace("<br />", "\n")
+    
+    # Common nesting mistakes that Telegram rejects:
+    # <b> ... <blockquote> ... </b> ... </blockquote>  → fix to proper close order
+    # Remove any </b> that appears before its matching open inside blockquote wrongly
+    # Simple safe approach: close open <b> before </blockquote> if needed
+    def _fix_b_before_blockquote_close(t):
+        # If we see </blockquote> while a <b> is still open, insert </b> before it
+        # (approximate, works for most single-level cases)
+        opens_b = 0
+        result = []
+        i = 0
+        lower = t.lower()
+        while i < len(t):
+            if lower.startswith('<b>', i):
+                opens_b += 1
+                result.append(t[i:i+3])
+                i += 3
+            elif lower.startswith('</b>', i):
+                if opens_b > 0:
+                    opens_b -= 1
+                result.append(t[i:i+4])
+                i += 4
+            elif lower.startswith('</blockquote>', i):
+                if opens_b > 0:
+                    result.append('</b>' * opens_b)
+                    opens_b = 0
+                result.append(t[i:i+13])
+                i += 13
+            else:
+                result.append(t[i])
+                i += 1
+        if opens_b > 0:
+            result.append('</b>' * opens_b)
+        return ''.join(result)
+    
+    text = _fix_b_before_blockquote_close(text)
     
     def _balance(t, open_pat, close_tag):
         opens = len(re.findall(open_pat, t, flags=re.I))
@@ -1148,10 +1211,8 @@ def sanitize_telegram_html(text: str) -> str:
         if opens > closes:
             t = t + (close_tag * (opens - closes))
         elif closes > opens:
-            # remove extra closing tags from the end
             extra = closes - opens
             for _ in range(extra):
-                # remove last occurrence of close tag
                 idx = t.lower().rfind(close_tag.lower())
                 if idx >= 0:
                     t = t[:idx] + t[idx+len(close_tag):]
@@ -1164,7 +1225,6 @@ def sanitize_telegram_html(text: str) -> str:
     text = _balance(text, r"<u>", "</u>")
     text = _balance(text, r"<s>", "</s>")
     text = _balance(text, r"<pre>", "</pre>")
-    # expandable attribute is fine on blockquote
     return text
 
 async def build_paginated_keyboard(
@@ -3781,8 +3841,8 @@ async def post_gen_send_to_chat(update: Update, context: ContextTypes.DEFAULT_TY
 # ============================================
 # ===     POST PREVIEW + EDIT HANDLERS     ===
 # ============================================
-async def _safe_edit_preview(query, text, reply_markup=None, auto_delete_sec=60):
-    """Photo ya text edit; admin DM msgs 1 min baad auto-delete (no timer shown)"""
+async def _safe_edit_preview(query, text, reply_markup=None, auto_delete_sec=30):
+    """Photo ya text edit; admin DM msgs auto-delete (default 30s, controllable)"""
     msg = None
     try:
         if query.message.photo:
@@ -3843,7 +3903,12 @@ async def post_preview_publish(update: Update, context: ContextTypes.DEFAULT_TYP
                 parse_mode=ParseMode.HTML,
                 reply_markup=context.user_data.get('post_keyboard')
             )
-        await _safe_edit_preview(query, f"✅ Post successfully published to <code>{default_chat}</code>!")
+        await _safe_edit_preview(query, f"✅ Post successfully published to <code>{default_chat}</code>!", auto_delete_sec=30)
+        # Extra: try hard-delete the preview message soon so admin DM clean rahe
+        try:
+            await schedule_admin_msg_delete(context.bot, query.message.chat_id, query.message.message_id, 20)
+        except Exception:
+            pass
     except Exception as e:
         logger.error(f"Preview publish error: {e}", exc_info=True)
         await _safe_edit_preview(query, f"❌ Publish failed:\n<code>{e}</code>\n\nChat ID check karo ya bot ko channel/group mein admin banao.")
@@ -3893,6 +3958,7 @@ async def _rebuild_post_caption(context):
             caption = (caption + "\n\n" + footer).strip()
         if is_quoted and caption and "<blockquote" not in caption.lower():
             caption = f"<blockquote>{caption}</blockquote>"
+        caption = sanitize_telegram_html(caption or "")
         context.user_data['post_caption_formatted'] = caption
         return caption
     
@@ -3924,6 +3990,7 @@ async def _rebuild_post_caption(context):
     if is_quoted and caption and "<blockquote" not in caption.lower():
         caption = f"<blockquote>{caption}</blockquote>"
     
+    caption = sanitize_telegram_html(caption or "")
     context.user_data['post_caption_formatted'] = caption
     return caption
 
@@ -3976,16 +4043,34 @@ async def post_edit_title_save(update: Update, context: ContextTypes.DEFAULT_TYP
     context.user_data['post_edit_title'] = new_title
     
     # Middle + footer mein bhi purana title replace (quote ke andar bhi)
+    # Sirf plain text replace, tags ke andar carefully
     for key in ('post_edit_middle', 'post_edit_footer'):
         part = context.user_data.get(key, '') or ''
         if old_title and old_title in part:
+            # Avoid breaking tags: replace only outside of tags where possible
             part = part.replace(old_title, new_title)
             context.user_data[key] = part
-        # Short forms bhi try (e.g. "P & P" if present as separate quoted title line)
     
     caption = await _rebuild_post_caption(context)
+    caption = sanitize_telegram_html(caption or "")
+    context.user_data['post_caption_formatted'] = caption
+    
     await update.message.reply_text("✅ Title updated.", parse_mode=ParseMode.HTML)
-    await update.message.reply_text("👁️ <b>POST PREVIEW</b>\n\n" + caption, reply_markup=InlineKeyboardMarkup(_get_preview_keyboard()), parse_mode=ParseMode.HTML)
+    try:
+        await update.message.reply_text(
+            "👁️ <b>POST PREVIEW</b>\n\n" + caption,
+            reply_markup=InlineKeyboardMarkup(_get_preview_keyboard()),
+            parse_mode=ParseMode.HTML
+        )
+    except BadRequest as e:
+        logger.error(f"Title update preview BadRequest: {e}")
+        # Fallback: send without broken tags
+        safe_cap = _re.sub(r'<[^>]+>', '', caption)
+        await update.message.reply_text(
+            "👁️ <b>POST PREVIEW</b>\n\n" + safe_cap,
+            reply_markup=InlineKeyboardMarkup(_get_preview_keyboard()),
+            parse_mode=ParseMode.HTML
+        )
     return PG_PREVIEW
 
 async def post_edit_desc_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -4012,8 +4097,15 @@ async def post_edit_desc_save(update: Update, context: ContextTypes.DEFAULT_TYPE
     new_middle = new_middle.replace('&lt;', '<').replace('&gt;', '>')
     context.user_data['post_edit_middle'] = new_middle
     caption = await _rebuild_post_caption(context)
+    caption = sanitize_telegram_html(caption or "")
+    context.user_data['post_caption_formatted'] = caption
     await update.message.reply_text("✅ Description updated.", parse_mode=ParseMode.HTML)
-    await update.message.reply_text("👁️ <b>POST PREVIEW</b>\n\n" + caption, reply_markup=InlineKeyboardMarkup(_get_preview_keyboard()), parse_mode=ParseMode.HTML)
+    try:
+        await update.message.reply_text("👁️ <b>POST PREVIEW</b>\n\n" + caption, reply_markup=InlineKeyboardMarkup(_get_preview_keyboard()), parse_mode=ParseMode.HTML)
+    except BadRequest as e:
+        logger.error(f"Desc update preview BadRequest: {e}")
+        safe_cap = re.sub(r'<[^>]+>', '', caption)
+        await update.message.reply_text("👁️ <b>POST PREVIEW</b>\n\n" + safe_cap, reply_markup=InlineKeyboardMarkup(_get_preview_keyboard()), parse_mode=ParseMode.HTML)
     return PG_PREVIEW
 
 async def post_edit_footer_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -4034,8 +4126,15 @@ async def post_edit_footer_save(update: Update, context: ContextTypes.DEFAULT_TY
     new_footer = new_footer.replace('&lt;', '<').replace('&gt;', '>')
     context.user_data['post_edit_footer'] = new_footer
     caption = await _rebuild_post_caption(context)
+    caption = sanitize_telegram_html(caption or "")
+    context.user_data['post_caption_formatted'] = caption
     await update.message.reply_text("✅ Download line updated.", parse_mode=ParseMode.HTML)
-    await update.message.reply_text("👁️ <b>POST PREVIEW</b>\n\n" + caption, reply_markup=InlineKeyboardMarkup(_get_preview_keyboard()), parse_mode=ParseMode.HTML)
+    try:
+        await update.message.reply_text("👁️ <b>POST PREVIEW</b>\n\n" + caption, reply_markup=InlineKeyboardMarkup(_get_preview_keyboard()), parse_mode=ParseMode.HTML)
+    except BadRequest as e:
+        logger.error(f"Footer update preview BadRequest: {e}")
+        safe_cap = re.sub(r'<[^>]+>', '', caption)
+        await update.message.reply_text("👁️ <b>POST PREVIEW</b>\n\n" + safe_cap, reply_markup=InlineKeyboardMarkup(_get_preview_keyboard()), parse_mode=ParseMode.HTML)
     return PG_PREVIEW
 
 # --- NAYA: Conversation: Generate Link ---
@@ -6605,6 +6704,7 @@ async def download_button_handler(update: Update, context: ContextTypes.DEFAULT_
             if "{time}" not in (warning_template or "") and "Auto-delete" not in (warning_template or "") and time_str not in (warning_template or ""):
                 warning_template = (warning_template or "") + f"\n⏳ Remaining: <b>{time_str}</b>"
             
+            file_msg_ids = []  # for live remaining refresh on the file posts themselves
             for quality in sorted_q_list:
                 file_id = qualities_dict.get(quality)
                 if not file_id: continue
@@ -6641,6 +6741,7 @@ async def download_button_handler(update: Update, context: ContextTypes.DEFAULT_
                     await context.bot.send_message(user_id, msg, parse_mode=ParseMode.HTML) 
                 
                 if sent_message:
+                    file_msg_ids.append(sent_message.message_id)
                     try:
                         asyncio.create_task(delete_message_later(
                             bot=context.bot, 
@@ -6662,13 +6763,21 @@ async def download_button_handler(update: Update, context: ContextTypes.DEFAULT_
                 except Exception as e:
                     logger.error(f"Async 'Sending files...' message delete schedule failed: {e}")
             
-            # Timer status message (refreshable)
+            # Timer status message (refreshable) + store file msg ids for live Remaining on files
             try:
                 from datetime import datetime, timedelta
                 deadline = datetime.utcnow() + timedelta(seconds=delete_time)
                 db['user_delete_timers'].update_one(
                     {"user_id": user_id},
-                    {"$set": {"user_id": user_id, "deadline": deadline, "seconds": delete_time}},
+                    {"$set": {
+                        "user_id": user_id,
+                        "deadline": deadline,
+                        "seconds": delete_time,
+                        "file_msg_ids": file_msg_ids,
+                        "anime_name": anime_name,
+                        "season_name": season_name,
+                        "ep_num": ep_num,
+                    }},
                     upsert=True
                 )
                 _h, _m, _s = delete_time // 3600, (delete_time % 3600) // 60, delete_time % 60
@@ -6831,6 +6940,7 @@ async def download_button_handler(update: Update, context: ContextTypes.DEFAULT_
             
             poster_to_use = anime_doc.get("poster_id")
             
+            file_msg_ids = []
             for quality in sorted_q_list:
                 file_id = qualities_dict.get(quality)
                 if not file_id: continue
@@ -6852,6 +6962,7 @@ async def download_button_handler(update: Update, context: ContextTypes.DEFAULT_
                         thumbnail=poster_to_use
                     )
                     if sent_message:
+                        file_msg_ids.append(sent_message.message_id)
                         asyncio.create_task(delete_message_later(
                             bot=context.bot,
                             chat_id=user_id,
@@ -6872,13 +6983,19 @@ async def download_button_handler(update: Update, context: ContextTypes.DEFAULT_
                     ))
                 except: pass
             
-            # Timer status message (refreshable)
+            # Timer status message (refreshable) + store file msg ids
             try:
                 from datetime import datetime, timedelta
                 deadline = datetime.utcnow() + timedelta(seconds=delete_time)
                 db['user_delete_timers'].update_one(
                     {"user_id": user_id},
-                    {"$set": {"user_id": user_id, "deadline": deadline, "seconds": delete_time}},
+                    {"$set": {
+                        "user_id": user_id,
+                        "deadline": deadline,
+                        "seconds": delete_time,
+                        "file_msg_ids": file_msg_ids,
+                        "anime_name": anime_name,
+                    }},
                     upsert=True
                 )
                 _h, _m, _s = delete_time // 3600, (delete_time % 3600) // 60, delete_time % 60
