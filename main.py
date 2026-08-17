@@ -388,7 +388,8 @@ async def thankyou_timer_refresh(update: Update, context: ContextTypes.DEFAULT_T
     )
 
 async def file_timer_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Refresh remaining auto-delete time for files — updates BOTH status msg + file captions"""
+    """Refresh remaining auto-delete time — ONLY status message below files.
+    File captions (admin ka original warning text) bilkul mat chhedo."""
     query = update.callback_query
     await query.answer("Refreshing...")
     from datetime import datetime
@@ -408,7 +409,7 @@ async def file_timer_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE)
     h, m, s = left // 3600, (left % 3600) // 60, left % 60
     tstr = f"{h}h {m}m {s}s" if h else (f"{m}m {s}s" if m else f"{s}s")
     
-    # Update the status message (below the files)
+    # Sirf neeche wala status message update — file warning text same rahega
     try:
         await query.edit_message_text(
             f"⏳ <b>Files auto-delete in:</b> <code>{tstr}</code>\n\nRefresh dabake remaining time dekho.",
@@ -417,28 +418,6 @@ async def file_timer_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
     except Exception as e:
         logger.warning(f"file_timer_refresh status edit failed: {e}")
-    
-    # Also update Remaining on the actual file posts (video captions)
-    file_msg_ids = doc.get("file_msg_ids") or []
-    anime_name = doc.get("anime_name") or ""
-    for mid in file_msg_ids:
-        try:
-            # Get current caption and replace the Remaining line
-            # We don't have the old caption stored, so build a short updated remaining notice
-            # Telegram allows edit_message_caption
-            # Keep it simple: append/update remaining
-            new_cap_suffix = f"\n⏳ Remaining: <b>{tstr}</b>"
-            # Try to edit — if original caption is long we just set a clean remaining line
-            # Better: fetch is not available easily, so set a reasonable caption with remaining
-            await context.bot.edit_message_caption(
-                chat_id=user_id,
-                message_id=mid,
-                caption=f"🎬 <b>{anime_name}</b>\n\n⚠️ Files will auto-delete soon.\n⏳ Remaining: <b>{tstr}</b>",
-                parse_mode=ParseMode.HTML
-            )
-        except Exception as e:
-            # Message may already be deleted or caption too long — ignore
-            logger.debug(f"Could not update file caption {mid}: {e}")
 
 async def request_timer_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Refresh button - show updated remaining time"""
@@ -3123,6 +3102,66 @@ async def merge_anime_do(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await asyncio.sleep(4)
     await edit_content_menu(update, context)
     return ConversationHandler.END
+
+# --- Auto-Delete Settings Menu (all timers) ---
+
+async def set_admin_preview_delete_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    config = await get_config()
+    current = int(config.get("admin_preview_delete_seconds") or 30)
+    await query.edit_message_text(
+        f"👑 <b>Admin Preview Auto-Delete</b>\n\n"
+        f"Abhi: <b>{current} seconds</b>\n\n"
+        f"Naya time <b>seconds</b> mein bhejo (min 5).\n\n/cancel - Cancel",
+        parse_mode=ParseMode.HTML,
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="admin_menu_auto_delete")]])
+    )
+    context.user_data["awaiting_preview_delete"] = True
+    return
+
+async def handle_preview_delete_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.user_data.get("awaiting_preview_delete"):
+        return
+    try:
+        secs = int(update.message.text.strip())
+        if secs < 5:
+            await update.message.reply_text("Minimum 5 seconds.")
+            return
+        config_collection.update_one({"_id": "bot_config"}, {"$set": {"admin_preview_delete_seconds": secs}}, upsert=True)
+        context.user_data.pop("awaiting_preview_delete", None)
+        await update.message.reply_text(f"✅ Admin Preview delete time set to <b>{secs}s</b>.", parse_mode=ParseMode.HTML)
+    except ValueError:
+        await update.message.reply_text("Sirf number bhejo (seconds).")
+
+async def auto_delete_settings_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """All auto-delete timers in one place"""
+    query = update.callback_query
+    await query.answer()
+    config = await get_config()
+    file_secs = int(config.get("delete_seconds", 300))
+    thank_secs = int(config.get("promo_thank_you_delete_seconds") or 120)
+    admin_secs = int(config.get("admin_preview_delete_seconds") or 30)
+    
+    def _fmt(s):
+        m, sec = divmod(int(s), 60)
+        return f"{m}m {sec}s" if m else f"{sec}s"
+    
+    text = (
+        "⏱️ <b>Auto-Delete Time Settings</b>\n\n"
+        f"📁 <b>File Delete:</b> {_fmt(file_secs)} ({file_secs}s)\n"
+        f"🙏 <b>Thank You / Promo:</b> {_fmt(thank_secs)} ({thank_secs}s)\n"
+        f"👑 <b>Admin Preview Msgs:</b> {_fmt(admin_secs)} ({admin_secs}s)\n\n"
+        "Kaunsa timer change karna hai?"
+    )
+    keyboard = [
+        [InlineKeyboardButton(f"📁 File Delete Time ({_fmt(file_secs)})", callback_data="admin_set_delete_time")],
+        [InlineKeyboardButton(f"🙏 Thank You Delete ({_fmt(thank_secs)})", callback_data="promo_set_timer")],
+        [InlineKeyboardButton(f"👑 Admin Preview Delete ({_fmt(admin_secs)})", callback_data="admin_set_preview_delete")],
+        [InlineKeyboardButton("⬅️ Back to Admin Menu", callback_data="admin_menu")],
+    ]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+
 # --- Conversation: Set Auto-Delete Time ---
 async def set_delete_time_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -3135,7 +3174,7 @@ async def set_delete_time_start(update: Update, context: ContextTypes.DEFAULT_TY
         "current_minutes": current_minutes,
         "current_seconds": current_seconds
     })
-    await query.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="admin_menu")]]))
+    await query.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="admin_menu_auto_delete")]]))
     return CS_GET_DELETE_TIME
 
 async def set_delete_time_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3684,7 +3723,8 @@ async def post_gen_get_short_link(update: Update, context: ContextTypes.DEFAULT_
         
         context.user_data['post_keyboard'] = InlineKeyboardMarkup(keyboard)
         
-        font_settings = {"font": "default", "style": "normal"}
+        # Use actual appearance settings from config (not hardcoded default)
+        font_settings = config.get("appearance", {"font": "default", "style": "normal"})
         try:
             caption_formatted = await apply_font_formatting(caption_raw, font_settings)
         except Exception:
@@ -3841,8 +3881,14 @@ async def post_gen_send_to_chat(update: Update, context: ContextTypes.DEFAULT_TY
 # ============================================
 # ===     POST PREVIEW + EDIT HANDLERS     ===
 # ============================================
-async def _safe_edit_preview(query, text, reply_markup=None, auto_delete_sec=30):
-    """Photo ya text edit; admin DM msgs auto-delete (default 30s, controllable)"""
+async def _safe_edit_preview(query, text, reply_markup=None, auto_delete_sec=None):
+    """Photo ya text edit; admin DM msgs auto-delete (from config admin_preview_delete_seconds)"""
+    if auto_delete_sec is None:
+        try:
+            cfg = config_collection.find_one({"_id": "bot_config"}) or {}
+            auto_delete_sec = int(cfg.get("admin_preview_delete_seconds") or 30)
+        except Exception:
+            auto_delete_sec = 30
     msg = None
     try:
         if query.message.photo:
@@ -3951,7 +3997,8 @@ async def _rebuild_post_caption(context):
     is_quoted = context.user_data.get('post_is_quoted', False)
     is_complex = context.user_data.get('post_is_complex', False)
     
-    # Complex templates (TYPE/IMDB etc) — original structure bilkul mat todo
+    # Complex templates (TYPE/IMDB etc) — structure preserve
+    # Bahar wala title MAT lagao (user: sirf quote ke andar wala title rahe)
     if is_complex:
         caption = middle or context.user_data.get('post_caption_original') or context.user_data.get('post_caption_formatted', '') or ''
         if footer and footer not in caption:
@@ -4440,7 +4487,7 @@ async def set_delete_time_start(update: Update, context: ContextTypes.DEFAULT_TY
         "current_minutes": current_minutes,
         "current_seconds": current_seconds
     })
-    await query.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="admin_menu")]]))
+    await query.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="admin_menu_auto_delete")]]))
     return CS_GET_DELETE_TIME
 
 async def set_delete_time_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -6518,7 +6565,7 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE, from
             ],
             [
                 InlineKeyboardButton("❤️ Donation", callback_data="admin_menu_donate_settings"),
-                InlineKeyboardButton("⏱️ Auto-Delete Time", callback_data="admin_set_delete_time") 
+                InlineKeyboardButton("⏱️ Auto-Delete Time", callback_data="admin_menu_auto_delete") 
             ],
             [
                 InlineKeyboardButton("🖼️ Photo Settings", callback_data="admin_menu_update_photo"),
@@ -7690,6 +7737,9 @@ def main():
     bot_app.add_handler(remove_co_admin_conv) 
     bot_app.add_handler(custom_post_conv)
     bot_app.add_handler(broadcast_conv) # NAYA v34
+    bot_app.add_handler(CallbackQueryHandler(auto_delete_settings_menu, pattern="^admin_menu_auto_delete$"))
+    bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_preview_delete_save), group=5)
+    bot_app.add_handler(CallbackQueryHandler(set_admin_preview_delete_start, pattern="^admin_set_preview_delete$"))
     bot_app.add_handler(set_delete_time_conv) 
     bot_app.add_handler(set_messages_conv) 
     bot_app.add_handler(appearance_conv)
