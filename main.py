@@ -256,7 +256,7 @@ except Exception as e:
     logger.error(f"MongoDB connection failed: {e}")
     exit()
 
-ITEMS_PER_PAGE = 20 # NAYA: 8 se 20 kar diya
+ITEMS_PER_PAGE = 15  # 3 columns x 5 rows
 
 # --- NAYA: Admin & Co-Admin Checks ---
 async def is_main_admin(user_id: int) -> bool:
@@ -1134,6 +1134,38 @@ def build_grid_keyboard(buttons, items_per_row=2):
     return keyboard
 
 # NAYA (v10): Pagination Helper
+
+def sanitize_telegram_html(text: str) -> str:
+    """Fix broken HTML so Telegram parse entities does not fail"""
+    if not text:
+        return text or ""
+    import re
+    # Remove unclosed tags that often break
+    # Keep only allowed simple tags; fix common issues
+    # Strip incomplete tags at end
+    text = text.replace("<br>", "\n").replace("<br/>", "\n").replace("<br />", "\n")
+    # Balance blockquote
+    opens = len(re.findall(r"<blockquote[^>]*>", text, flags=re.I))
+    closes = len(re.findall(r"</blockquote>", text, flags=re.I))
+    if opens > closes:
+        text = text + ("</blockquote>" * (opens - closes))
+    elif closes > opens:
+        # remove extra closes from end gradually - simple: strip all unmatched by rebuilding
+        pass
+    opens_b = len(re.findall(r"<b>", text, flags=re.I))
+    closes_b = len(re.findall(r"</b>", text, flags=re.I))
+    if opens_b > closes_b:
+        text = text + ("</b>" * (opens_b - closes_b))
+    opens_i = len(re.findall(r"<i>", text, flags=re.I))
+    closes_i = len(re.findall(r"</i>", text, flags=re.I))
+    if opens_i > closes_i:
+        text = text + ("</i>" * (opens_i - closes_i))
+    opens_c = len(re.findall(r"<code>", text, flags=re.I))
+    closes_c = len(re.findall(r"</code>", text, flags=re.I))
+    if opens_c > closes_c:
+        text = text + ("</code>" * (opens_c - closes_c))
+    return text
+
 async def build_paginated_keyboard(
     collection, 
     page: int, 
@@ -1162,13 +1194,16 @@ async def build_paginated_keyboard(
     buttons = []
     for item in items:
         if "name" in item:
-            buttons.append(InlineKeyboardButton(item['name'], callback_data=f"{item_callback_prefix}{item['name']}"))
+            # Wider-looking buttons (padding + emoji)
+            nm = item['name']
+            label = f"🎬 {nm}" if len(nm) < 18 else f"🎬 {nm[:20]}"
+            buttons.append(InlineKeyboardButton(label, callback_data=f"{item_callback_prefix}{item['name']}"))
         elif "first_name" in item:
             user_id = item['_id']
             first_name = item.get('first_name', f"ID: {user_id}")
             buttons.append(InlineKeyboardButton(first_name, callback_data=f"{item_callback_prefix}{user_id}"))
 
-    keyboard = build_grid_keyboard(buttons, items_per_row=2)
+    keyboard = build_grid_keyboard(buttons, items_per_row=3)  # 3 per row
     
     page_buttons = []
     if page > 0:
@@ -3604,29 +3639,52 @@ async def post_gen_get_short_link(update: Update, context: ContextTypes.DEFAULT_
         preview_kb.append([InlineKeyboardButton("🔄 Change Chat ID", callback_data="post_preview_change_chat")])
         preview_kb.append([InlineKeyboardButton("❌ Cancel", callback_data="post_preview_cancel")])
         
-        if is_episode_post or not poster_id:
-            await update.message.reply_text(preview_text, reply_markup=InlineKeyboardMarkup(preview_kb), parse_mode=ParseMode.HTML)
-        else:
+        preview_text = sanitize_telegram_html(preview_text)
+        context.user_data['post_caption_formatted'] = sanitize_telegram_html(caption_formatted or "")
+        
+        async def _send_preview(text_to_send):
+            if is_episode_post or not poster_id:
+                await update.message.reply_text(text_to_send, reply_markup=InlineKeyboardMarkup(preview_kb), parse_mode=ParseMode.HTML)
+            else:
+                try:
+                    # Telegram caption limit 1024
+                    cap = text_to_send if len(text_to_send) <= 1024 else text_to_send[:1000] + "..."
+                    await update.message.reply_photo(photo=poster_id, caption=cap, reply_markup=InlineKeyboardMarkup(preview_kb), parse_mode=ParseMode.HTML)
+                except Exception as pe:
+                    logger.warning(f"preview photo failed: {pe}")
+                    await update.message.reply_text(text_to_send, reply_markup=InlineKeyboardMarkup(preview_kb), parse_mode=ParseMode.HTML)
+        
+        try:
+            await _send_preview(preview_text)
+        except Exception as html_err:
+            logger.warning(f"HTML preview failed, fallback plain: {html_err}")
+            # Strip all tags for plain fallback
+            import re as _re2
+            plain = _re2.sub(r'<[^>]+>', '', preview_text)
             try:
-                await update.message.reply_photo(photo=poster_id, caption=preview_text[:1024], reply_markup=InlineKeyboardMarkup(preview_kb), parse_mode=ParseMode.HTML)
-            except Exception as pe:
-                logger.warning(f"preview photo failed: {pe}")
-                await update.message.reply_text(preview_text, reply_markup=InlineKeyboardMarkup(preview_kb), parse_mode=ParseMode.HTML)
+                await update.message.reply_text(
+                    plain,
+                    reply_markup=InlineKeyboardMarkup(preview_kb)
+                )
+            except Exception as e2:
+                await update.message.reply_text(
+                    f"Preview error: {e2}\nShort link saved. Try Publish from menu or /cancel"
+                )
         
         return PG_PREVIEW
         
     except Exception as e:
         logger.error(f"post_gen_get_short_link error: {e}", exc_info=True)
+        err = str(e).replace("<", "").replace(">", "")
         await update.message.reply_text(
-            f"❌ Short link / preview error:\n<code>{str(e)[:200]}</code>\n\nLink phir se bhejo ya /cancel",
-            parse_mode=ParseMode.HTML
+            f"❌ Short link / preview error:\n{err[:200]}\n\nLink phir se bhejo ya /cancel"
         )
         return PG_GET_SHORT_LINK
 
 async def post_gen_send_to_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id_raw = update.message.text.strip()
     is_episode_post = context.user_data.get('is_episode_post', False) 
-    caption_text = context.user_data.get('post_caption_formatted', '')
+    caption_text = sanitize_telegram_html(context.user_data.get('post_caption_formatted', '') or '')
     
     try:
         chat_id = int(chat_id_raw) if chat_id_raw.lstrip('-').isdigit() else chat_id_raw
@@ -3675,6 +3733,9 @@ async def _safe_edit_preview(query, text, reply_markup=None):
 async def post_preview_publish(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    # Fix broken HTML from description/title edits
+    if context.user_data.get('post_caption_formatted'):
+        context.user_data['post_caption_formatted'] = sanitize_telegram_html(context.user_data['post_caption_formatted'])
     config = await get_config()
     default_chat = config.get("default_publish_chat")
     
