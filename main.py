@@ -3453,164 +3453,170 @@ async def generate_post_ask_chat(update: Update, context: ContextTypes.DEFAULT_T
         return ConversationHandler.END
         
 async def post_gen_get_short_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    short_link_url = (update.message.text or "").strip()
-    # Remove accidental markdown/spaces
-    short_link_url = short_link_url.strip("<> \"'")
-    original = context.user_data.get('original_download_url') or ""
-    
-    # Auto-add https:// if missing (for short links like bit.ly/xxx)
-    if short_link_url and not short_link_url.lower().startswith(("http://", "https://", "tg://", "skip", "/skip", "-")):
-        if "." in short_link_url and " " not in short_link_url:
-            short_link_url = "https://" + short_link_url.lstrip("/")
-    
-    # Agar short link invalid / skip / same empty -> original use
-    if (not short_link_url or short_link_url.lower() in ("skip", "/skip", "-")
-        or not (short_link_url.startswith("http://") or short_link_url.startswith("https://") or short_link_url.startswith("tg://"))):
-        short_link_url = original or short_link_url
-        if not (short_link_url or "").startswith("http"):
-            await update.message.reply_text("❌ Valid link bhejo (https://...) ya original link copy karke bhejo.")
-            return PG_GET_SHORT_LINK
-    
-    caption_raw = context.user_data['post_caption_raw']
-    poster_id = context.user_data['post_poster_id']
-    btn_backup = context.user_data['btn_backup']
-    btn_donate = context.user_data['btn_donate']
-    btn_help = context.user_data['btn_help']
-    btn_verify = context.user_data.get('btn_verify')
-    is_episode_post = context.user_data.get('is_episode_post', False)
-    
-    # Button texts (admin editable)
-    config = await get_config()
-    t_backup = config.get("btn_text_backup") or "Backup"
-    t_verify = config.get("btn_text_verify") or "How to Verify"
-    t_donate = config.get("btn_text_donate") or "Donate"
-    t_request = config.get("btn_text_request") or "Request a Movie"
-    t_download = config.get("btn_text_download") or "⬇️ DOWNLOAD"
-    
-    # ALWAYS real bot username (never fallback "bot")
+    """Original link ke baad short link save karke PREVIEW pe le jata hai"""
     try:
-        bot_uname = (await context.bot.get_me()).username
-    except Exception:
-        bot_uname = context.user_data.get('bot_username') or ""
-    if not bot_uname:
-        await update.message.reply_text("❌ Bot username nahi mila. /start se bot restart karke try karo.")
-        return ConversationHandler.END
-    context.user_data['bot_username'] = bot_uname
-    links = config.get("links", {})
-    
-    backup_url = links.get("backup") or f"https://t.me/{bot_uname}"
-    donate_url = f"https://t.me/{bot_uname}?start=donate"
-    verify_bot_url = f"https://t.me/{bot_uname}?start=verify"
-    # Request ALWAYS deep-link into bot /request flow
-    request_url = f"https://t.me/{bot_uname}?start=request"
-    
-    btn_backup = InlineKeyboardButton(t_backup, url=backup_url)
-    btn_donate = InlineKeyboardButton(t_donate, url=donate_url)
-    btn_verify = InlineKeyboardButton(t_verify, url=verify_bot_url)
-    btn_request = InlineKeyboardButton(t_request, url=request_url)
-    btn_download = InlineKeyboardButton(t_download, url=short_link_url)
-    
-    # Buttons map
-    btn_map = {
-        "backup": btn_backup,
-        "verify": btn_verify,
-        "donate": btn_donate,
-        "request": btn_request,
-        "download": btn_download,
-    }
-    show = {
-        "backup": config.get("btn_show_backup", True),
-        "verify": config.get("btn_show_verify", True),
-        "donate": config.get("btn_show_donate", True),
-        "request": config.get("btn_show_request", True),
-        "download": config.get("btn_show_download", True),
-    }
-    # Movable layout from config (list of rows of button keys)
-    layout = config.get("post_button_layout") or [
-        ["backup", "verify"],
-        ["donate", "request"],
-        ["download"],
-    ]
-    keyboard = []
-    for row_keys in layout:
-        row = []
-        for key in row_keys:
-            if show.get(key, True) and key in btn_map:
-                row.append(btn_map[key])
-        if row:
-            keyboard.append(row)
-    if not keyboard:
-        keyboard = [[btn_download]]
-    
-    context.user_data['post_keyboard'] = InlineKeyboardMarkup(keyboard)
-    font_settings = {"font": "default", "style": "normal"}
-    caption_formatted = await apply_font_formatting(caption_raw, font_settings)
-    context.user_data['post_caption_formatted'] = caption_formatted
-    context.user_data['post_caption_raw'] = caption_raw
-    
-    # 3 parts: Title / Middle description / Download footer
-    import re as _re
-    title_match = _re.search(r'<b>([^<]+)</b>', caption_formatted)
-    if title_match:
-        context.user_data['post_edit_title'] = title_match.group(1).strip()
-        rest = caption_formatted[title_match.end():].strip().lstrip('\n')
-    else:
-        context.user_data['post_edit_title'] = context.user_data.get('anime_name', '') or ''
-        rest = caption_formatted
-    
-    title_text = context.user_data.get('post_edit_title', '') or ''
-    
-    # Footer = last line with Download / Press On
-    lines = rest.split('\n')
-    footer_idx = None
-    for i in range(len(lines) - 1, -1, -1):
-        if 'Download' in lines[i] or 'download' in lines[i] or 'Press On' in lines[i]:
-            footer_idx = i
-            break
-    if footer_idx is not None:
-        footer = '\n'.join(lines[footer_idx:]).strip()
-        middle = '\n'.join(lines[:footer_idx]).strip()
-    else:
-        footer = ''
-        middle = rest
-    
-    # Title blockquote middle mein rehne do — outer bold alag se tabhi lage jab middle mein title na ho
-    # (rebuild function handle karega). Yahan sirf empty lines clean.
-    if middle:
-        middle = _re.sub(r'\n{3,}', '\n\n', middle).strip()
-    
-    context.user_data['post_edit_footer'] = footer
-    context.user_data['post_edit_middle'] = middle
-    context.user_data['post_is_quoted'] = False
-    
-    # Rebuild caption without double title
-    caption_formatted = await _rebuild_post_caption(context)
-    context.user_data['post_caption_formatted'] = caption_formatted
-    
-    # === PREVIEW ===
-    config = await get_config()
-    default_chat = config.get("default_publish_chat")
-    
-    preview_text = "👁️ <b>POST PREVIEW</b>\n\n" + caption_formatted
-    preview_kb = [
-        [InlineKeyboardButton("✅ Publish", callback_data="post_preview_publish")],
-        [InlineKeyboardButton("✏️ Edit Title/Desc", callback_data="post_preview_edit")],
-        [InlineKeyboardButton("📝 Toggle Quote", callback_data="post_preview_quote")],
-    ]
-    if default_chat:
-        preview_kb.append([InlineKeyboardButton(f"📍 Default: {default_chat}", callback_data="noop")])
-    preview_kb.append([InlineKeyboardButton("🔄 Change Chat ID", callback_data="post_preview_change_chat")])
-    preview_kb.append([InlineKeyboardButton("❌ Cancel", callback_data="post_preview_cancel")])
-    
-    if is_episode_post or not poster_id:
-        await update.message.reply_text(preview_text, reply_markup=InlineKeyboardMarkup(preview_kb), parse_mode=ParseMode.HTML)
-    else:
+        raw = (update.message.text or "").strip()
+        short_link_url = raw.strip("<> \t\n\r\"'")
+        original = context.user_data.get('original_download_url') or ""
+        
+        # skip / empty -> original
+        if not short_link_url or short_link_url.lower() in ("skip", "/skip", "-", "none"):
+            short_link_url = original
+        
+        # auto https
+        low = short_link_url.lower()
+        if short_link_url and not low.startswith(("http://", "https://", "tg://")):
+            if "." in short_link_url and " " not in short_link_url:
+                short_link_url = "https://" + short_link_url.lstrip("/")
+        
+        if not short_link_url or not short_link_url.lower().startswith(("http://", "https://", "tg://")):
+            await update.message.reply_text(
+                "❌ Valid link bhejo.\n\n"
+                f"Original:\n<code>{original}</code>\n\n"
+                "Short link (https://...) paste karo, ya original copy karke bhejo.\n"
+                "Skip ke liye: <code>skip</code>",
+                parse_mode=ParseMode.HTML
+            )
+            return PG_GET_SHORT_LINK
+        
+        # Save short link
+        context.user_data['short_link_url'] = short_link_url
+        await update.message.reply_text(
+            f"✅ <b>Short link saved!</b>\n\n<code>{short_link_url}</code>\n\nPreview bana raha hoon...",
+            parse_mode=ParseMode.HTML
+        )
+        
+        caption_raw = context.user_data.get('post_caption_raw') or ""
+        poster_id = context.user_data.get('post_poster_id')
+        is_episode_post = context.user_data.get('is_episode_post', False)
+        
+        config = await get_config()
+        t_backup = config.get("btn_text_backup") or "Backup"
+        t_verify = config.get("btn_text_verify") or "How to Verify"
+        t_donate = config.get("btn_text_donate") or "Donate"
+        t_request = config.get("btn_text_request") or "Request a Movie"
+        t_download = config.get("btn_text_download") or "⬇️ DOWNLOAD"
+        
         try:
-            await update.message.reply_photo(photo=poster_id, caption=preview_text, reply_markup=InlineKeyboardMarkup(preview_kb), parse_mode=ParseMode.HTML)
-        except:
+            bot_uname = (await context.bot.get_me()).username
+        except Exception:
+            bot_uname = context.user_data.get('bot_username') or ""
+        if not bot_uname:
+            bot_uname = "bot"
+        context.user_data['bot_username'] = bot_uname
+        links = config.get("links", {}) or {}
+        
+        backup_url = links.get("backup") or f"https://t.me/{bot_uname}"
+        donate_url = f"https://t.me/{bot_uname}?start=donate"
+        verify_bot_url = f"https://t.me/{bot_uname}?start=verify"
+        request_url = f"https://t.me/{bot_uname}?start=request"
+        
+        btn_map = {
+            "backup": InlineKeyboardButton(t_backup, url=backup_url),
+            "verify": InlineKeyboardButton(t_verify, url=verify_bot_url),
+            "donate": InlineKeyboardButton(t_donate, url=donate_url),
+            "request": InlineKeyboardButton(t_request, url=request_url),
+            "download": InlineKeyboardButton(t_download, url=short_link_url),
+        }
+        show = {
+            "backup": config.get("btn_show_backup", True),
+            "verify": config.get("btn_show_verify", True),
+            "donate": config.get("btn_show_donate", True),
+            "request": config.get("btn_show_request", True),
+            "download": config.get("btn_show_download", True),
+        }
+        layout = config.get("post_button_layout") or [
+            ["backup", "verify"],
+            ["donate", "request"],
+            ["download"],
+        ]
+        keyboard = []
+        for row_keys in layout:
+            row = []
+            for key in row_keys:
+                if show.get(key, True) and key in btn_map:
+                    row.append(btn_map[key])
+            if row:
+                keyboard.append(row)
+        if not keyboard:
+            keyboard = [[btn_map["download"]]]
+        
+        context.user_data['post_keyboard'] = InlineKeyboardMarkup(keyboard)
+        
+        font_settings = {"font": "default", "style": "normal"}
+        try:
+            caption_formatted = await apply_font_formatting(caption_raw, font_settings)
+        except Exception:
+            caption_formatted = caption_raw
+        
+        context.user_data['post_caption_formatted'] = caption_formatted
+        context.user_data['post_caption_raw'] = caption_raw
+        
+        # Parse 3 parts
+        import re as _re
+        title_match = _re.search(r'<b>([^<]+)</b>', caption_formatted or "")
+        if title_match:
+            context.user_data['post_edit_title'] = title_match.group(1).strip()
+            rest = caption_formatted[title_match.end():].strip().lstrip('\n')
+        else:
+            context.user_data['post_edit_title'] = context.user_data.get('anime_name', '') or ''
+            rest = caption_formatted or ""
+        
+        lines = rest.split('\n')
+        footer_idx = None
+        for i in range(len(lines) - 1, -1, -1):
+            if 'Download' in lines[i] or 'download' in lines[i] or 'Press On' in lines[i]:
+                footer_idx = i
+                break
+        if footer_idx is not None:
+            footer = '\n'.join(lines[footer_idx:]).strip()
+            middle = '\n'.join(lines[:footer_idx]).strip()
+        else:
+            footer = ''
+            middle = rest
+        if middle:
+            middle = _re.sub(r'\n{3,}', '\n\n', middle).strip()
+        
+        context.user_data['post_edit_footer'] = footer
+        context.user_data['post_edit_middle'] = middle
+        context.user_data['post_is_quoted'] = False
+        
+        try:
+            caption_formatted = await _rebuild_post_caption(context)
+        except Exception as e:
+            logger.error(f"rebuild caption: {e}")
+        context.user_data['post_caption_formatted'] = caption_formatted
+        
+        default_chat = config.get("default_publish_chat")
+        preview_text = "👁️ <b>POST PREVIEW</b>\n\n" + (caption_formatted or "")
+        preview_kb = [
+            [InlineKeyboardButton("✅ Publish", callback_data="post_preview_publish")],
+            [InlineKeyboardButton("✏️ Edit Title/Desc", callback_data="post_preview_edit")],
+            [InlineKeyboardButton("📝 Toggle Quote", callback_data="post_preview_quote")],
+        ]
+        if default_chat:
+            preview_kb.append([InlineKeyboardButton(f"📍 Default: {default_chat}", callback_data="noop")])
+        preview_kb.append([InlineKeyboardButton("🔄 Change Chat ID", callback_data="post_preview_change_chat")])
+        preview_kb.append([InlineKeyboardButton("❌ Cancel", callback_data="post_preview_cancel")])
+        
+        if is_episode_post or not poster_id:
             await update.message.reply_text(preview_text, reply_markup=InlineKeyboardMarkup(preview_kb), parse_mode=ParseMode.HTML)
-    
-    return PG_PREVIEW
+        else:
+            try:
+                await update.message.reply_photo(photo=poster_id, caption=preview_text[:1024], reply_markup=InlineKeyboardMarkup(preview_kb), parse_mode=ParseMode.HTML)
+            except Exception as pe:
+                logger.warning(f"preview photo failed: {pe}")
+                await update.message.reply_text(preview_text, reply_markup=InlineKeyboardMarkup(preview_kb), parse_mode=ParseMode.HTML)
+        
+        return PG_PREVIEW
+        
+    except Exception as e:
+        logger.error(f"post_gen_get_short_link error: {e}", exc_info=True)
+        await update.message.reply_text(
+            f"❌ Short link / preview error:\n<code>{str(e)[:200]}</code>\n\nLink phir se bhejo ya /cancel",
+            parse_mode=ParseMode.HTML
+        )
+        return PG_GET_SHORT_LINK
 
 async def post_gen_send_to_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id_raw = update.message.text.strip()
