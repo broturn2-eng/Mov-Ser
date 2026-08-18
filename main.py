@@ -1,8 +1,9 @@
 # ============================================
-# ===       COMPLETE FINAL FIX (v34)       ===
+# ===       COMPLETE FINAL FIX (v35)       ===
 # ============================================
 # === (FEAT: Add Broadcast feature)        ===
 # === (FEAT: Add User Statistics)          ===
+# === (FIX: Full menu co-admin + 4 locks + chats notify/reply) ===
 # === (FIX: Admin menu layout)             ===
 # ============================================
 import os
@@ -257,6 +258,24 @@ except Exception as e:
     exit()
 
 ITEMS_PER_PAGE = 15  # 3 columns x 5 rows
+
+# Quality keys (short): 4=480p, 7=720p, 10=1080p, K=4K
+QUALITY_ORDER = ['4', '7', '10', 'K']
+QUALITY_LABELS = {'4': '4', '7': '7', '10': '10', 'K': 'K'}
+# legacy map for old DB data
+LEGACY_QUALITY_MAP = {'480p': '4', '720p': '7', '1080p': '10', '4K': 'K'}
+
+def normalize_qualities(qdict):
+    """Map legacy 480p/720p/... keys to short 4/7/10/K so both old & new DB work."""
+    if not qdict:
+        return {}
+    out = {}
+    for k, v in qdict.items():
+        nk = LEGACY_QUALITY_MAP.get(k, k)
+        out[nk] = v
+    return out
+
+
 
 # --- NAYA: Admin & Co-Admin Checks ---
 async def is_main_admin(user_id: int) -> bool:
@@ -812,19 +831,19 @@ async def get_default_messages():
         "admin_add_ep_select_season": "<f>Aapne</f> <b>{anime_name}</b> <f>select kiya hai.</f>\n\n<f>Ab <b>Season</b> select karein:</f>",
         "admin_add_ep_get_season_with_last": "<f>Aapne</f> <b>Season {season_name}</b> <f>select kiya hai.</f>\n<f>Last added episode:</f> <b>{last_ep_num}</b>\n\n<f>Ab <b>Episode Number</b> bhejo.</f>\n<f>(Jaise: 1, 2, 3...)</f>\n<f>(Agar yeh ek movie hai, toh</f> <code>1</code> <f>type karein.)</f>\n\n/cancel - <f>Cancel.</f>",
         "admin_add_ep_get_season_no_last": "<f>Aapne</f> <b>Season {season_name}</b> <f>select kiya hai.</f>\n<f>Is season mein abhi koi episode nahi hai.</f>\n\n<f>Ab <b>Episode Number</b> bhejo.</f>\n<f>(Jaise: 1, 2, 3...)</f>\n<f>(Agar yeh ek movie hai, toh</f> <code>1</code> <f>type karein.)</f>\n\n/cancel - <f>Cancel.</f>",
-        "admin_add_ep_get_number": "<f>Aapne</f> <b>Episode {ep_num}</b> <f>select kiya hai.</f>\n\n<f>Ab <b>480p</b> quality ki video file bhejein.</f>\n<f>Ya</f> /skip <f>type karein.</f>",
+        "admin_add_ep_get_number": "<f>Aapne</f> <b>Episode {ep_num}</b> <f>select kiya hai.</f>\n\n<f>Ab <b>4</b> quality ki video file bhejein.</f>\n<f>Ya</f> /skip <f>type karein.</f>",
         "admin_add_ep_get_number_exists": "⚠️ <b><f>Error!</f></b> '{anime_name}' - Season {season_name} - Episode {ep_num} <f>pehle se maujood hai. Please pehle isse delete karein ya koi doosra episode number dein.</f>\n\n/cancel - <f>Cancel.</f>",
         "admin_add_ep_helper_invalid": "<f>Ye video file nahi hai. Please dobara video file bhejein ya</f> /skip <f>karein.</f>",
         "admin_add_ep_helper_success": "✅ <b>{quality}</b> <f>save ho gaya.</f>",
         "admin_add_ep_helper_error": "❌ <b><f>Error!</f></b> {quality} <f>save nahi kar paya. Logs check karein.</f>",
-        "admin_add_ep_get_480p": "<f>Ab <b>720p</b> quality ki video file bhejein.</f>\n<f>Ya</f> /skip <f>type karein.</f>",
-        "admin_add_ep_skip_480p": "✅ <f>480p skip kar diya.</f>\n\n<f>Ab <b>720p</b> quality ki video file bhejein.</f>\n<f>Ya</f> /skip <f>type karein.</f>",
-        "admin_add_ep_get_720p": "<f>Ab <b>1080p</b> quality ki video file bhejein.</f>\n<f>Ya</f> /skip <f>type karein.</f>",
-        "admin_add_ep_skip_720p": "✅ <f>720p skip kar diya.</f>\n\n<f>Ab <b>1080p</b> quality ki video file bhejein.</f>\n<f>Ya</f> /skip <f>type karein.</f>",
-        "admin_add_ep_get_1080p": "<f>Ab <b>4K</b> quality ki video file bhejein.</f>\n<f>Ya</f> /skip <f>type karein.</f>",
-        "admin_add_ep_skip_1080p": "✅ <f>1080p skip kar diya.</f>\n\n<f>Ab <b>4K</b> quality ki video file bhejein.</f>\n<f>Ya</f> /skip <f>type karein.</f>",
+        "admin_add_ep_get_480p": "<f>Ab <b>7</b> quality ki video file bhejein.</f>\n<f>Ya</f> /skip <f>type karein.</f>",
+        "admin_add_ep_skip_480p": "✅ <f>4 skip kar diya.</f>\n\n<f>Ab <b>7</b> quality ki video file bhejein.</f>\n<f>Ya</f> /skip <f>type karein.</f>",
+        "admin_add_ep_get_720p": "<f>Ab <b>10</b> quality ki video file bhejein.</f>\n<f>Ya</f> /skip <f>type karein.</f>",
+        "admin_add_ep_skip_720p": "✅ <f>7 skip kar diya.</f>\n\n<f>Ab <b>10</b> quality ki video file bhejein.</f>\n<f>Ya</f> /skip <f>type karein.</f>",
+        "admin_add_ep_get_1080p": "<f>Ab <b>K</b> quality ki video file bhejein.</f>\n<f>Ya</f> /skip <f>type karein.</f>",
+        "admin_add_ep_skip_1080p": "✅ <f>10 skip kar diya.</f>\n\n<f>Ab <b>K</b> quality ki video file bhejein.</f>\n<f>Ya</f> /skip <f>type karein.</f>",
         "admin_add_ep_get_4k_success": "✅ <b><f>Success!</f></b> <f>Saari qualities save ho gayi hain.</f>",
-        "admin_add_ep_skip_4k": "✅ <f>4K skip kar diya.</f>\n\n✅ <b><f>Success!</f></b> <f>Episode save ho gaya hai.</f>",
+        "admin_add_ep_skip_4k": "✅ <f>K skip kar diya.</f>\n\n✅ <b><f>Success!</f></b> <f>Episode save ho gaya hai.</f>",
         "admin_add_ep_ask_more": "✅ <f>Ep</f> <b>{ep_num}</b> <f>save ho gaya!</f>\n\n<f>Aap</f> <b>S{season_name}</b> <f>mein aur episode add karna chahte hain?</f>",
         "admin_add_ep_next_prompt": "<f>Last Ep:</f> <b>{ep_num}</b>. <f>Season:</f> <b>{season_name}</b>\n\n<f>Ab agla <b>Episode Number</b> bhejo.</f>\n<f>(Suggestion: {next_ep_num})</f>\n\n/cancel - <f>Cancel.</f>",
         "admin_add_ep_next_prompt_no_suggestion": "<f>Last Ep:</f> <b>{ep_num}</b>. <f>Season:</f> <b>{season_name}</b>\n\n<f>Ab agla <b>Episode Number</b> bhejo.</f>\n\n/cancel - <f>Cancel.</f>",
@@ -1685,7 +1704,7 @@ async def save_anime_details(update: Update, context: ContextTypes.DEFAULT_TYPE)
         
         anime_document = {
             "name": name, 
-            "type": "series",  # Series (old anime flow)
+            "type": "s",  # Series
             "poster_id": context.user_data['anime_poster_id'], 
             "description": context.user_data['anime_desc'], 
             "seasons": {},
@@ -1732,13 +1751,13 @@ async def get_movie_poster(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def get_movie_desc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['movie_desc'] = update.message.text
-    text = "✅ Description saved.\n\nAb <b>480p</b> video bhejo (ya /skip):"
+    text = "✅ Description saved.\n\nAb <b>4</b> video bhejo (ya /skip):"
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
     return M_GET_480P
 
 async def skip_movie_desc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['movie_desc'] = None
-    text = "Description skip.\n\nAb <b>480p</b> video bhejo (ya /skip):"
+    text = "Description skip.\n\nAb <b>4</b> video bhejo (ya /skip):"
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
     return M_GET_480P
 
@@ -1758,37 +1777,37 @@ async def _save_movie_quality(update: Update, context: ContextTypes.DEFAULT_TYPE
     return True
 
 async def get_movie_480p(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await _save_movie_quality(update, context, "480p"):
+    if not await _save_movie_quality(update, context, "4"):
         return M_GET_480P
-    await update.message.reply_text("Ab <b>720p</b> video bhejo (ya /skip):", parse_mode=ParseMode.HTML)
+    await update.message.reply_text("Ab <b>7</b> video bhejo (ya /skip):", parse_mode=ParseMode.HTML)
     return M_GET_720P
 
 async def skip_movie_480p(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("480p skip.\nAb <b>720p</b> video bhejo (ya /skip):", parse_mode=ParseMode.HTML)
+    await update.message.reply_text("4 skip.\nAb <b>7</b> video bhejo (ya /skip):", parse_mode=ParseMode.HTML)
     return M_GET_720P
 
 async def get_movie_720p(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await _save_movie_quality(update, context, "720p"):
+    if not await _save_movie_quality(update, context, "7"):
         return M_GET_720P
-    await update.message.reply_text("Ab <b>1080p</b> video bhejo (ya /skip):", parse_mode=ParseMode.HTML)
+    await update.message.reply_text("Ab <b>10</b> video bhejo (ya /skip):", parse_mode=ParseMode.HTML)
     return M_GET_1080P
 
 async def skip_movie_720p(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("720p skip.\nAb <b>1080p</b> video bhejo (ya /skip):", parse_mode=ParseMode.HTML)
+    await update.message.reply_text("7 skip.\nAb <b>10</b> video bhejo (ya /skip):", parse_mode=ParseMode.HTML)
     return M_GET_1080P
 
 async def get_movie_1080p(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await _save_movie_quality(update, context, "1080p"):
+    if not await _save_movie_quality(update, context, "10"):
         return M_GET_1080P
-    await update.message.reply_text("Ab <b>4K</b> video bhejo (ya /skip):", parse_mode=ParseMode.HTML)
+    await update.message.reply_text("Ab <b>K</b> video bhejo (ya /skip):", parse_mode=ParseMode.HTML)
     return M_GET_4K
 
 async def skip_movie_1080p(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("1080p skip.\nAb <b>4K</b> video bhejo (ya /skip):", parse_mode=ParseMode.HTML)
+    await update.message.reply_text("10 skip.\nAb <b>K</b> video bhejo (ya /skip):", parse_mode=ParseMode.HTML)
     return M_GET_4K
 
 async def get_movie_4k(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await _save_movie_quality(update, context, "4K")
+    await _save_movie_quality(update, context, "K")
     return await confirm_movie_details(update, context)
 
 async def skip_movie_4k(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1826,7 +1845,7 @@ async def save_movie_details(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
         movie_doc = {
             "name": name,
-            "type": "movie",
+            "type": "m",
             "poster_id": context.user_data['movie_poster_id'],
             "description": context.user_data.get('movie_desc'),
             "qualities": context.user_data.get('movie_qualities', {}),
@@ -1866,7 +1885,7 @@ async def add_season_show_anime_list(update: Update, context: ContextTypes.DEFAU
         page_callback_prefix="addseason_page_",
         item_callback_prefix="season_anime_",
         back_callback="back_to_add_content",
-        filter_query={"$or": [{"type": "series"}, {"type": {"$exists": False}}]}
+        filter_query={"$or": [{"type": "s"}, {"type": "series"}, {"type": {"$exists": False}}]}
     )
     
     if not animes and page == 0:
@@ -2125,7 +2144,7 @@ async def add_episode_show_anime_list(update: Update, context: ContextTypes.DEFA
         page_callback_prefix="addep_page_",
         item_callback_prefix="ep_anime_",
         back_callback="back_to_add_content",
-        filter_query={"$or": [{"type": "series"}, {"type": {"$exists": False}}]}
+        filter_query={"$or": [{"type": "s"}, {"type": "series"}, {"type": {"$exists": False}}]}
     )
     
     if not animes and page == 0:
@@ -2252,7 +2271,7 @@ async def get_episode_number(update: Update, context: ContextTypes.DEFAULT_TYPE)
     return E_GET_480P
 
 async def get_480p_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await _save_episode_file_helper(update, context, "480p"):
+    if not await _save_episode_file_helper(update, context, "4"):
         return E_GET_480P 
     text = await format_message(context, "admin_add_ep_get_480p")
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
@@ -2264,7 +2283,7 @@ async def skip_480p(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return E_GET_720P
 
 async def get_720p_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await _save_episode_file_helper(update, context, "720p"):
+    if not await _save_episode_file_helper(update, context, "7"):
         return E_GET_720P 
     text = await format_message(context, "admin_add_ep_get_720p")
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
@@ -2276,7 +2295,7 @@ async def skip_720p(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return E_GET_1080P
 
 async def get_1080p_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await _save_episode_file_helper(update, context, "1080p"):
+    if not await _save_episode_file_helper(update, context, "10"):
         return E_GET_1080P 
     text = await format_message(context, "admin_add_ep_get_1080p")
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
@@ -2288,7 +2307,7 @@ async def skip_1080p(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return E_GET_4K
 
 async def get_4k_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if await _save_episode_file_helper(update, context, "4K"):
+    if await _save_episode_file_helper(update, context, "K"):
         text = await format_message(context, "admin_add_ep_get_4k_success")
         await update.message.reply_text(text, parse_mode=ParseMode.HTML)
     else:
@@ -2655,10 +2674,6 @@ async def add_content_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
     
 async def manage_content_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, from_message: bool = False):
-    user_id = update.effective_user.id
-    if await is_co_admin_only(user_id):
-        await deny_co_admin_feature(update, context, "Delete Content")
-        return
     query = update.callback_query
     if query: await query.answer()
     
@@ -3766,11 +3781,11 @@ async def post_gen_show_anime_list(update: Update, context: ContextTypes.DEFAULT
     
     # Movies aur Series alag lists
     if post_type == 'post_gen_movie':
-        filter_query = {"type": "movie"}
+        filter_query = {"$or": [{"type": "m"}, {"type": "movie"}]}
         list_label = "Movie"
     elif post_type in ('post_gen_anime', 'post_gen_season', 'post_gen_episode'):
         # Series only (type series OR no type field for old data)
-        filter_query = {"$or": [{"type": "series"}, {"type": {"$exists": False}}]}
+        filter_query = {"$or": [{"type": "s"}, {"type": "series"}, {"type": {"$exists": False}}]}
         list_label = "Series"
     else:
         filter_query = {}
@@ -4652,11 +4667,11 @@ async def gen_link_show_anime_list(update: Update, context: ContextTypes.DEFAULT
     link_type = context.user_data.get('link_type', '')
     
     if link_type == 'gen_link_movie':
-        filter_query = {"type": "movie"}
+        filter_query = {"$or": [{"type": "m"}, {"type": "movie"}]}
         list_label = "Movie"
     else:
         # Series only
-        filter_query = {"$or": [{"type": "series"}, {"type": {"$exists": False}}]}
+        filter_query = {"$or": [{"type": "s"}, {"type": "series"}, {"type": {"$exists": False}}]}
         list_label = "Series"
         
     animes, keyboard = await build_paginated_keyboard(
@@ -5419,6 +5434,10 @@ async def send_broadcast_task(context: ContextTypes.DEFAULT_TYPE, message: Updat
 # --- NAYA: Conversation: Bot Appearance ---
 async def appearance_menu_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    user_id = update.effective_user.id
+    if await is_co_admin_only(user_id):
+        await deny_co_admin_feature(update, context, "Bot Appearance")
+        return AP_MENU
     if query: await query.answer()
     
     config = await get_config()
@@ -5818,9 +5837,7 @@ async def bot_messages_menu_admin(update: Update, context: ContextTypes.DEFAULT_
 async def admin_chats_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     if query: await query.answer()
-    if await is_co_admin_only(update.effective_user.id):
-        await deny_co_admin_feature(update, context, "Chats")
-        return
+    # Co-admin allowed — can view & reply to requests
     pending = db['movie_requests'].count_documents({"status": "pending"})
     replied = db['movie_requests'].count_documents({"status": "replied"})
     text = (
@@ -6517,6 +6534,10 @@ async def send_promo_thank_you(bot, user_id: int):
 # NAYA (v32): Update Photo Sub-Menu
 async def update_photo_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    user_id = update.effective_user.id
+    if await is_co_admin_only(user_id):
+        await deny_co_admin_feature(update, context, "Photo Settings")
+        return
     await query.answer()
     keyboard = [
         [InlineKeyboardButton("🖼️ Update Series/Season Photo", callback_data="admin_update_photo_content")],
@@ -6781,19 +6802,34 @@ async def request_receive(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ok_msg = "✅ <b>Request received!</b>\n\nDeveloper will update it shortly. Keep patience."
     await update.message.reply_text(ok_msg, parse_mode=ParseMode.HTML)
     
-    # Light notify admin (once) - full list in Admin Settings → Chats
+    # Notify Main Admin + all Co-Admins
     try:
-        await context.bot.send_message(
-            chat_id=ADMIN_ID,
-            text=(
-                f"📩 <b>New request</b> from {name}\n"
-                f"<code>{text[:200]}</code>\n\n"
-                f"Open <b>Admin Settings → Chats</b> to view / reply / ban."
-            ),
-            parse_mode=ParseMode.HTML
+        notify_text = (
+            f"📩 <b>New request</b> from {name}\n"
+            f"<code>{text[:200]}</code>\n\n"
+            f"Open <b>Chats (Requests)</b> to view / reply / ban."
         )
+        notify_ids = set([ADMIN_ID])
+        try:
+            cfg = await get_config()
+            for cid in cfg.get("co_admins", []) or []:
+                try:
+                    notify_ids.add(int(cid))
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        for nid in notify_ids:
+            try:
+                await context.bot.send_message(
+                    chat_id=nid,
+                    text=notify_text,
+                    parse_mode=ParseMode.HTML
+                )
+            except Exception as e:
+                logger.warning(f"Request notify to {nid} failed: {e}")
     except Exception as e:
-        logger.error(f"Admin notify failed: {e}")
+        logger.error(f"Admin/co-admin notify failed: {e}")
     
     return ConversationHandler.END
 
@@ -6819,14 +6855,12 @@ async def request_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 async def admin_reply_to_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Admin replies to a request message -> forward reply to user"""
+    """Admin / Co-Admin replies to a request message -> forward reply to user"""
     if not update.message or not update.message.reply_to_message:
         return
     user = update.effective_user
-    if user.id != ADMIN_ID:
-        # co-admin optional? only main admin for now
-        if not await is_main_admin(user.id):
-            return
+    if not await is_co_admin(user.id):
+        return
     
     reply_to = update.message.reply_to_message
     doc = db['request_reply_map'].find_one({"admin_msg_id": reply_to.message_id})
@@ -7096,52 +7130,38 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE, from
         
     logger.info("Admin/Co-Admin ne /admin command use kiya.")
     
-    if not await is_main_admin(user_id):
-        # Co-Admin Menu
-        # Co-admin: no Delete, no Admin Settings, no Bot Messages
-        keyboard = [
-            [InlineKeyboardButton("➕ Add Content", callback_data="admin_menu_add_content")],
-            [InlineKeyboardButton("✏️ Edit Content", callback_data="admin_menu_edit_content")], 
-            [InlineKeyboardButton("✍️ Post Generator", callback_data="admin_post_gen")],
-            [
-                InlineKeyboardButton("🖼️ Photo Settings", callback_data="admin_menu_update_photo"),
-                InlineKeyboardButton("🔗 Gen Link", callback_data="admin_gen_link") 
-            ]
-        ]
-        admin_menu_text = await format_message(context, "admin_panel_co")
-    
-    else:
-        # Main Admin Menu (NAYA v34 LAYOUT)
-        keyboard = [
-            [InlineKeyboardButton("➕ Add Content", callback_data="admin_menu_add_content")],
-            [
-                InlineKeyboardButton("🗑️ Delete Content", callback_data="admin_menu_manage_content"), 
-                InlineKeyboardButton("✏️ Edit Content", callback_data="admin_menu_edit_content") 
-            ],
-            [
-                InlineKeyboardButton("🔗 Other Links", callback_data="admin_menu_other_links"),
-                InlineKeyboardButton("✍️ Post Generator", callback_data="admin_post_gen")
-            ],
-            [
-                InlineKeyboardButton("❤️ Donation", callback_data="admin_menu_donate_settings"),
-                InlineKeyboardButton("⏱️ Auto-Delete Time", callback_data="admin_menu_auto_delete") 
-            ],
-            [
-                InlineKeyboardButton("🖼️ Photo Settings", callback_data="admin_menu_update_photo"),
-                InlineKeyboardButton("🔗 Gen Link", callback_data="admin_gen_link") 
-            ],
-            [
-                # NAYA LAYOUT (2x2)
-                InlineKeyboardButton("🎨 Bot Appearance", callback_data="admin_menu_appearance"),
-                InlineKeyboardButton("📊 User Statistics", callback_data="admin_show_stats") # NAYA
-            ],
-             # NAYA LAYOUT (1x1)
-            [InlineKeyboardButton("⚙ Bot Messages", callback_data="admin_menu_messages")],
-             # NAYA LAYOUT (1x1)
-            [InlineKeyboardButton("🛠️ Admin Settings", callback_data="admin_menu_admin_settings")],
-            [InlineKeyboardButton("💬 Chats (Requests)", callback_data="admin_chats_menu")]
-        ]
+    # Full menu for both Main Admin & Co-Admin
+    # Locked for co-admin only (deny on click): Photo Settings, Bot Appearance, Bot Messages, Admin Settings
+    keyboard = [
+        [InlineKeyboardButton("➕ Add Content", callback_data="admin_menu_add_content")],
+        [
+            InlineKeyboardButton("🗑️ Delete Content", callback_data="admin_menu_manage_content"), 
+            InlineKeyboardButton("✏️ Edit Content", callback_data="admin_menu_edit_content") 
+        ],
+        [
+            InlineKeyboardButton("🔗 Other Links", callback_data="admin_menu_other_links"),
+            InlineKeyboardButton("✍️ Post Generator", callback_data="admin_post_gen")
+        ],
+        [
+            InlineKeyboardButton("❤️ Donation", callback_data="admin_menu_donate_settings"),
+            InlineKeyboardButton("⏱️ Auto-Delete Time", callback_data="admin_menu_auto_delete") 
+        ],
+        [
+            InlineKeyboardButton("🖼️ Photo Settings", callback_data="admin_menu_update_photo"),
+            InlineKeyboardButton("🔗 Gen Link", callback_data="admin_gen_link") 
+        ],
+        [
+            InlineKeyboardButton("🎨 Bot Appearance", callback_data="admin_menu_appearance"),
+            InlineKeyboardButton("📊 User Statistics", callback_data="admin_show_stats")
+        ],
+        [InlineKeyboardButton("⚙ Bot Messages", callback_data="admin_menu_messages")],
+        [InlineKeyboardButton("🛠️ Admin Settings", callback_data="admin_menu_admin_settings")],
+        [InlineKeyboardButton("💬 Chats (Requests)", callback_data="admin_chats_menu")]
+    ]
+    if await is_main_admin(user_id):
         admin_menu_text = await format_message(context, "admin_panel_main")
+    else:
+        admin_menu_text = await format_message(context, "admin_panel_co")
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     
@@ -7263,7 +7283,7 @@ async def download_button_handler(update: Update, context: ContextTypes.DEFAULT_
             except Exception as e:
                 logger.warning(f"Episode list delete nahi kar paya: {e}")
 
-            qualities_dict = anime_doc.get("seasons", {}).get(season_name, {}).get(ep_num, {})
+            qualities_dict = normalize_qualities(anime_doc.get("seasons", {}).get(season_name, {}).get(ep_num, {}))
             if not qualities_dict:
                 msg = await format_message(context, "user_dl_episodes_not_found")
                 await context.bot.send_message(user_id, msg, parse_mode=ParseMode.HTML)
@@ -7282,7 +7302,7 @@ async def download_button_handler(update: Update, context: ContextTypes.DEFAULT_
             sent_msg = await context.bot.send_message(user_id, msg, parse_mode=ParseMode.HTML)
             msg_to_delete_id = sent_msg.message_id
             
-            QUALITY_ORDER = ['480p', '720p', '1080p', '4K']
+            QUALITY_ORDER = ['4', '7', '10', 'K']
             available_qualities = qualities_dict.keys()
             sorted_q_list = [q for q in QUALITY_ORDER if q in available_qualities]
             extra_q = [q for q in available_qualities if q not in sorted_q_list]
@@ -7526,21 +7546,21 @@ async def download_button_handler(update: Update, context: ContextTypes.DEFAULT_
             return
             
         # Case 1: Sirf content click hua hai
-        content_type = anime_doc.get("type", "series")  # default series for old data
+        content_type = anime_doc.get("type", "s")  # default series for old data
         
         # === MOVIE: direct qualities ===
-        if content_type == "movie":
+        if content_type in ("m", "movie"):
             if checking_msg_id:
                 try: await context.bot.delete_message(user_id, checking_msg_id)
                 except Exception: pass
             
-            qualities_dict = anime_doc.get("qualities", {})
+            qualities_dict = normalize_qualities(anime_doc.get("qualities", {}))
             if not qualities_dict:
                 msg = "❌ Is movie ke liye koi quality available nahi hai."
                 await context.bot.send_message(user_id, msg, parse_mode=ParseMode.HTML)
                 return
             
-            QUALITY_ORDER = ['480p', '720p', '1080p', '4K']
+            QUALITY_ORDER = ['4', '7', '10', 'K']
             available_qualities = list(qualities_dict.keys())
             sorted_q_list = [q for q in QUALITY_ORDER if q in available_qualities]
             extra_q = [q for q in available_qualities if q not in sorted_q_list]
