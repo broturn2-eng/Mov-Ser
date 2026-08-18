@@ -3,7 +3,7 @@
 # ============================================
 # === (FEAT: Add Broadcast feature)        ===
 # === (FEAT: Add User Statistics)          ===
-# === (FIX: Full menu co-admin + 4 locks + chats notify/reply) ===
+# === (FIX: Only 720p/1080p as 7/10, user sees 720p/1080p) ===
 # === (FIX: Admin menu layout)             ===
 # ============================================
 import os
@@ -259,14 +259,23 @@ except Exception as e:
 
 ITEMS_PER_PAGE = 15  # 3 columns x 5 rows
 
-# Quality keys (short): 4=480p, 7=720p, 10=1080p, K=4K
-QUALITY_ORDER = ['4', '7', '10', 'K']
-QUALITY_LABELS = {'4': '4', '7': '7', '10': '10', 'K': 'K'}
-# legacy map for old DB data
-LEGACY_QUALITY_MAP = {'480p': '4', '720p': '7', '1080p': '10', '4K': 'K'}
+# Quality keys (short): only 7=720p, 10=1080p (480/4K removed)
+QUALITY_ORDER = ['7', '10']
+# User-facing labels (delivery captions)
+QUALITY_LABELS = {
+    '7': '720p', '10': '1080p',
+    '720p': '720p', '1080p': '1080p',
+    '4': '720p', 'K': '1080p',  # rare old short keys fallback
+    '480p': '480p', '4K': '4K',  # old files still show original name
+}
+# Map any stored key -> short key used in QUALITY_ORDER
+LEGACY_QUALITY_MAP = {
+    '480p': '4', '720p': '7', '1080p': '10', '4K': 'K',
+    '4': '4', '7': '7', '10': '10', 'K': 'K',
+}
 
 def normalize_qualities(qdict):
-    """Map legacy 480p/720p/... keys to short 4/7/10/K so both old & new DB work."""
+    """Normalize keys; keep all for download (old 480/4K still deliverable)."""
     if not qdict:
         return {}
     out = {}
@@ -274,6 +283,10 @@ def normalize_qualities(qdict):
         nk = LEGACY_QUALITY_MAP.get(k, k)
         out[nk] = v
     return out
+
+def quality_display(q: str) -> str:
+    """Clear label for user captions."""
+    return QUALITY_LABELS.get(q, q)
 
 
 
@@ -831,19 +844,19 @@ async def get_default_messages():
         "admin_add_ep_select_season": "<f>Aapne</f> <b>{anime_name}</b> <f>select kiya hai.</f>\n\n<f>Ab <b>Season</b> select karein:</f>",
         "admin_add_ep_get_season_with_last": "<f>Aapne</f> <b>Season {season_name}</b> <f>select kiya hai.</f>\n<f>Last added episode:</f> <b>{last_ep_num}</b>\n\n<f>Ab <b>Episode Number</b> bhejo.</f>\n<f>(Jaise: 1, 2, 3...)</f>\n<f>(Agar yeh ek movie hai, toh</f> <code>1</code> <f>type karein.)</f>\n\n/cancel - <f>Cancel.</f>",
         "admin_add_ep_get_season_no_last": "<f>Aapne</f> <b>Season {season_name}</b> <f>select kiya hai.</f>\n<f>Is season mein abhi koi episode nahi hai.</f>\n\n<f>Ab <b>Episode Number</b> bhejo.</f>\n<f>(Jaise: 1, 2, 3...)</f>\n<f>(Agar yeh ek movie hai, toh</f> <code>1</code> <f>type karein.)</f>\n\n/cancel - <f>Cancel.</f>",
-        "admin_add_ep_get_number": "<f>Aapne</f> <b>Episode {ep_num}</b> <f>select kiya hai.</f>\n\n<f>Ab <b>4</b> quality ki video file bhejein.</f>\n<f>Ya</f> /skip <f>type karein.</f>",
+        "admin_add_ep_get_number": "<f>Aapne</f> <b>Episode {ep_num}</b> <f>select kiya hai.</f>\n\n<f>Ab <b>720p (7)</b> quality ki video file bhejein.</f>\n<f>Ya</f> /skip <f>type karein.</f>",
         "admin_add_ep_get_number_exists": "⚠️ <b><f>Error!</f></b> '{anime_name}' - Season {season_name} - Episode {ep_num} <f>pehle se maujood hai. Please pehle isse delete karein ya koi doosra episode number dein.</f>\n\n/cancel - <f>Cancel.</f>",
         "admin_add_ep_helper_invalid": "<f>Ye video file nahi hai. Please dobara video file bhejein ya</f> /skip <f>karein.</f>",
         "admin_add_ep_helper_success": "✅ <b>{quality}</b> <f>save ho gaya.</f>",
         "admin_add_ep_helper_error": "❌ <b><f>Error!</f></b> {quality} <f>save nahi kar paya. Logs check karein.</f>",
-        "admin_add_ep_get_480p": "<f>Ab <b>7</b> quality ki video file bhejein.</f>\n<f>Ya</f> /skip <f>type karein.</f>",
-        "admin_add_ep_skip_480p": "✅ <f>4 skip kar diya.</f>\n\n<f>Ab <b>7</b> quality ki video file bhejein.</f>\n<f>Ya</f> /skip <f>type karein.</f>",
-        "admin_add_ep_get_720p": "<f>Ab <b>10</b> quality ki video file bhejein.</f>\n<f>Ya</f> /skip <f>type karein.</f>",
-        "admin_add_ep_skip_720p": "✅ <f>7 skip kar diya.</f>\n\n<f>Ab <b>10</b> quality ki video file bhejein.</f>\n<f>Ya</f> /skip <f>type karein.</f>",
-        "admin_add_ep_get_1080p": "<f>Ab <b>K</b> quality ki video file bhejein.</f>\n<f>Ya</f> /skip <f>type karein.</f>",
-        "admin_add_ep_skip_1080p": "✅ <f>10 skip kar diya.</f>\n\n<f>Ab <b>K</b> quality ki video file bhejein.</f>\n<f>Ya</f> /skip <f>type karein.</f>",
+        "admin_add_ep_get_480p": "<f>Ab <b>1080p (10)</b> quality ki video file bhejein.</f>\n<f>Ya</f> /skip <f>type karein.</f>",
+        "admin_add_ep_skip_480p": "✅ <f>720p skip.</f>\n\n<f>Ab <b>1080p (10)</b> quality ki video file bhejein.</f>\n<f>Ya</f> /skip <f>type karein.</f>",
+        "admin_add_ep_get_720p": "✅ <b>720p</b> saved.\n\n<f>Ab <b>1080p (10)</b> quality ki video file bhejein.</f>\n<f>Ya</f> /skip <f>type karein.</f>",
+        "admin_add_ep_skip_720p": "✅ <f>720p skip.</f>\n\n<f>Ab <b>1080p (10)</b> quality ki video file bhejein.</f>\n<f>Ya</f> /skip <f>type karein.</f>",
+        "admin_add_ep_get_1080p": "✅ <b>1080p</b> saved.\n\n✅ <b><f>Success!</f></b> <f>Episode qualities save ho gayi.</f>",
+        "admin_add_ep_skip_1080p": "✅ <f>1080p skip.</f>\n\n✅ <b><f>Success!</f></b> <f>Episode save ho gaya hai.</f>",
         "admin_add_ep_get_4k_success": "✅ <b><f>Success!</f></b> <f>Saari qualities save ho gayi hain.</f>",
-        "admin_add_ep_skip_4k": "✅ <f>K skip kar diya.</f>\n\n✅ <b><f>Success!</f></b> <f>Episode save ho gaya hai.</f>",
+        "admin_add_ep_skip_4k": "✅ <b><f>Success!</f></b> <f>Episode save ho gaya hai.</f>",
         "admin_add_ep_ask_more": "✅ <f>Ep</f> <b>{ep_num}</b> <f>save ho gaya!</f>\n\n<f>Aap</f> <b>S{season_name}</b> <f>mein aur episode add karna chahte hain?</f>",
         "admin_add_ep_next_prompt": "<f>Last Ep:</f> <b>{ep_num}</b>. <f>Season:</f> <b>{season_name}</b>\n\n<f>Ab agla <b>Episode Number</b> bhejo.</f>\n<f>(Suggestion: {next_ep_num})</f>\n\n/cancel - <f>Cancel.</f>",
         "admin_add_ep_next_prompt_no_suggestion": "<f>Last Ep:</f> <b>{ep_num}</b>. <f>Season:</f> <b>{season_name}</b>\n\n<f>Ab agla <b>Episode Number</b> bhejo.</f>\n\n/cancel - <f>Cancel.</f>",
@@ -1751,13 +1764,13 @@ async def get_movie_poster(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def get_movie_desc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['movie_desc'] = update.message.text
-    text = "✅ Description saved.\n\nAb <b>4</b> video bhejo (ya /skip):"
+    text = "✅ Description saved.\n\nAb <b>720p (7)</b> video bhejo (ya /skip):"
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
-    return M_GET_480P
+    return M_GET_480P  # first quality step
 
 async def skip_movie_desc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['movie_desc'] = None
-    text = "Description skip.\n\nAb <b>4</b> video bhejo (ya /skip):"
+    text = "Description skip.\n\nAb <b>720p (7)</b> video bhejo (ya /skip):"
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
     return M_GET_480P
 
@@ -1770,44 +1783,42 @@ async def _save_movie_quality(update: Update, context: ContextTypes.DEFAULT_TYPE
     if not file_id:
         if update.message.text and update.message.text.startswith('/'):
             return False
-        await update.message.reply_text(f"❌ {quality} ke liye video file bhejo.", parse_mode=ParseMode.HTML)
+        label = quality_display(quality)
+        await update.message.reply_text(f"❌ {label} ke liye video file bhejo.", parse_mode=ParseMode.HTML)
         return False
     context.user_data['movie_qualities'][quality] = file_id
-    await update.message.reply_text(f"✅ {quality} saved!", parse_mode=ParseMode.HTML)
+    await update.message.reply_text(f"✅ {quality_display(quality)} saved!", parse_mode=ParseMode.HTML)
     return True
 
 async def get_movie_480p(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await _save_movie_quality(update, context, "4"):
+    """First step = 720p (7)"""
+    if not await _save_movie_quality(update, context, "7"):
         return M_GET_480P
-    await update.message.reply_text("Ab <b>7</b> video bhejo (ya /skip):", parse_mode=ParseMode.HTML)
+    await update.message.reply_text("Ab <b>1080p (10)</b> video bhejo (ya /skip):", parse_mode=ParseMode.HTML)
     return M_GET_720P
 
 async def skip_movie_480p(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("4 skip.\nAb <b>7</b> video bhejo (ya /skip):", parse_mode=ParseMode.HTML)
+    await update.message.reply_text("720p skip.\nAb <b>1080p (10)</b> video bhejo (ya /skip):", parse_mode=ParseMode.HTML)
     return M_GET_720P
 
 async def get_movie_720p(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await _save_movie_quality(update, context, "7"):
+    """Second step = 1080p (10)"""
+    if not await _save_movie_quality(update, context, "10"):
         return M_GET_720P
-    await update.message.reply_text("Ab <b>10</b> video bhejo (ya /skip):", parse_mode=ParseMode.HTML)
-    return M_GET_1080P
+    return await confirm_movie_details(update, context)
 
 async def skip_movie_720p(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("7 skip.\nAb <b>10</b> video bhejo (ya /skip):", parse_mode=ParseMode.HTML)
-    return M_GET_1080P
+    return await confirm_movie_details(update, context)
 
 async def get_movie_1080p(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await _save_movie_quality(update, context, "10"):
         return M_GET_1080P
-    await update.message.reply_text("Ab <b>K</b> video bhejo (ya /skip):", parse_mode=ParseMode.HTML)
-    return M_GET_4K
+    return await confirm_movie_details(update, context)
 
 async def skip_movie_1080p(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("10 skip.\nAb <b>K</b> video bhejo (ya /skip):", parse_mode=ParseMode.HTML)
-    return M_GET_4K
+    return await confirm_movie_details(update, context)
 
 async def get_movie_4k(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await _save_movie_quality(update, context, "K")
     return await confirm_movie_details(update, context)
 
 async def skip_movie_4k(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1816,7 +1827,7 @@ async def skip_movie_4k(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def confirm_movie_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
     name = context.user_data['movie_name']
     desc = context.user_data.get('movie_desc') or "No description"
-    quals = list(context.user_data.get('movie_qualities', {}).keys())
+    quals = [quality_display(q) for q in context.user_data.get('movie_qualities', {}).keys()]
     caption = f"🎬 <b>Confirm Movie</b>\n\n<b>Name:</b> {name}\n<b>Desc:</b> {desc}\n<b>Qualities:</b> {', '.join(quals) if quals else 'None'}\n\nSave karein?"
     keyboard = [
         [InlineKeyboardButton("✅ Save Movie", callback_data="save_movie")],
@@ -2239,12 +2250,12 @@ async def _save_episode_file_helper(update: Update, context: ContextTypes.DEFAUL
         )
         logger.info(f"Naya episode save ho gaya: {anime_name} S{season_name} E{ep_num} {quality}")
         
-        text = await format_message(context, "admin_add_ep_helper_success", {"quality": quality})
+        text = await format_message(context, "admin_add_ep_helper_success", {"quality": quality_display(quality)})
         await update.message.reply_text(text, parse_mode=ParseMode.HTML)
         return True
     except Exception as e:
         logger.error(f"Episode file save karne me error: {e}")
-        text = await format_message(context, "admin_add_ep_helper_error", {"quality": quality})
+        text = await format_message(context, "admin_add_ep_helper_error", {"quality": quality_display(quality)})
         await update.message.reply_text(text, parse_mode=ParseMode.HTML)
         return False
 
@@ -2271,11 +2282,12 @@ async def get_episode_number(update: Update, context: ContextTypes.DEFAULT_TYPE)
     return E_GET_480P
 
 async def get_480p_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await _save_episode_file_helper(update, context, "4"):
-        return E_GET_480P 
+    """State E_GET_480P = first quality step = 720p (7)"""
+    if not await _save_episode_file_helper(update, context, "7"):
+        return E_GET_480P
     text = await format_message(context, "admin_add_ep_get_480p")
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
-    return E_GET_720P
+    return E_GET_720P  # next = 1080p
 
 async def skip_480p(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = await format_message(context, "admin_add_ep_skip_480p")
@@ -2283,43 +2295,32 @@ async def skip_480p(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return E_GET_720P
 
 async def get_720p_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await _save_episode_file_helper(update, context, "7"):
-        return E_GET_720P 
-    text = await format_message(context, "admin_add_ep_get_720p")
-    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
-    return E_GET_1080P
-
-async def skip_720p(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = await format_message(context, "admin_add_ep_skip_720p")
-    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
-    return E_GET_1080P
-
-async def get_1080p_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """State E_GET_720P = second quality = 1080p (10)"""
     if not await _save_episode_file_helper(update, context, "10"):
-        return E_GET_1080P 
+        return E_GET_720P
     text = await format_message(context, "admin_add_ep_get_1080p")
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
-    return E_GET_4K
+    return await ask_add_more_episodes(update, context)
 
-async def skip_1080p(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def skip_720p(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = await format_message(context, "admin_add_ep_skip_1080p")
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
-    return E_GET_4K
+    return await ask_add_more_episodes(update, context)
+
+async def get_1080p_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # unused in new 2-step flow; keep for safety
+    if not await _save_episode_file_helper(update, context, "10"):
+        return E_GET_1080P
+    return await ask_add_more_episodes(update, context)
+
+async def skip_1080p(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    return await ask_add_more_episodes(update, context)
 
 async def get_4k_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if await _save_episode_file_helper(update, context, "K"):
-        text = await format_message(context, "admin_add_ep_get_4k_success")
-        await update.message.reply_text(text, parse_mode=ParseMode.HTML)
-    else:
-        return E_GET_4K 
-    
-    return await ask_add_more_episodes(update, context) # NAYA
+    return await ask_add_more_episodes(update, context)
 
 async def skip_4k(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = await format_message(context, "admin_add_ep_skip_4k")
-    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
-    
-    return await ask_add_more_episodes(update, context) # NAYA
+    return await ask_add_more_episodes(update, context)
 
 # NAYA: "Add More Episodes" flow
 async def ask_add_more_episodes(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -7302,7 +7303,7 @@ async def download_button_handler(update: Update, context: ContextTypes.DEFAULT_
             sent_msg = await context.bot.send_message(user_id, msg, parse_mode=ParseMode.HTML)
             msg_to_delete_id = sent_msg.message_id
             
-            QUALITY_ORDER = ['4', '7', '10', 'K']
+            QUALITY_ORDER = ['7', '10']
             available_qualities = qualities_dict.keys()
             sorted_q_list = [q for q in QUALITY_ORDER if q in available_qualities]
             extra_q = [q for q in available_qualities if q not in sorted_q_list]
@@ -7344,7 +7345,7 @@ async def download_button_handler(update: Update, context: ContextTypes.DEFAULT_
                         anime_name=anime_name,
                         season_name=season_name,
                         ep_num=ep_num,
-                        quality=quality,
+                        quality=quality_display(quality),
                         warning_msg=warning_template # Yeh pehle se formatted hai
                     )
                     
@@ -7560,7 +7561,7 @@ async def download_button_handler(update: Update, context: ContextTypes.DEFAULT_
                 await context.bot.send_message(user_id, msg, parse_mode=ParseMode.HTML)
                 return
             
-            QUALITY_ORDER = ['4', '7', '10', 'K']
+            QUALITY_ORDER = ['7', '10']
             available_qualities = list(qualities_dict.keys())
             sorted_q_list = [q for q in QUALITY_ORDER if q in available_qualities]
             extra_q = [q for q in available_qualities if q not in sorted_q_list]
@@ -7601,7 +7602,7 @@ async def download_button_handler(update: Update, context: ContextTypes.DEFAULT_
                     caption_base = "🎬 <b>{anime_name}</b>\n({quality})\n\n{warning_msg}"
                     caption_with_vars = caption_base.format(
                         anime_name=anime_name,
-                        quality=quality,
+                        quality=quality_display(quality),
                         warning_msg=warning_template
                     )
                     font_settings = {"font": "default", "style": "normal"}
