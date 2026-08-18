@@ -4103,10 +4103,13 @@ async def _rebuild_post_caption(context):
         
         parts = []
         if title:
+            # Title short — normal quote (not collapsed)
             parts.append(f"<blockquote><b>{title}</b></blockquote>")
         if details:
-            parts.append(f"<blockquote>{details}</blockquote>")
+            # Details long — EXPANDABLE / collapsible quote
+            parts.append(f"<blockquote expandable>{details}</blockquote>")
         if ft:
+            # Press On Download — normal quote
             parts.append(f"<blockquote>{ft}</blockquote>")
         
         caption = "\n\n".join(parts) if parts else details
@@ -7861,7 +7864,9 @@ def main():
     bot_app.add_handler(remove_co_admin_conv) 
     bot_app.add_handler(custom_post_conv)
     bot_app.add_handler(broadcast_conv) # NAYA v34
+    bot_app.add_handler(CallbackQueryHandler(back_to_admin_menu, pattern="^admin_menu$"))
     bot_app.add_handler(CallbackQueryHandler(auto_delete_settings_menu, pattern="^admin_menu_auto_delete$"))
+    bot_app.add_handler(CallbackQueryHandler(back_to_admin_settings_menu, pattern="^admin_menu_admin_settings$|^back_to_admin_settings$"))
     # Promo + Preview delete timers ab set_delete_time_conv ke andar handle hote hain
 
     bot_app.add_handler(set_delete_time_conv) 
