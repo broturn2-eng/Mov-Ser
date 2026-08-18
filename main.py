@@ -623,7 +623,11 @@ async def format_message(context: ContextTypes.DEFAULT_TYPE, key: str, variables
     # 3. Font settings apply karo (BAAD MEIN)
     font_settings = config.get("appearance", {"font": "default", "style": "normal"})
     formatted_text = await apply_font_formatting(text_with_vars, font_settings)
-
+    # 4. HTML balance — blockquote/bold Telegram accept kare
+    try:
+        formatted_text = sanitize_telegram_html(formatted_text or "")
+    except Exception:
+        pass
     return formatted_text
 
 
@@ -1352,13 +1356,26 @@ def track_dm_msg(user_id: int, message_id: int):
     try:
         if not message_id:
             return
+        from datetime import datetime as _dt
         db['user_session_msgs'].update_one(
             {"user_id": user_id},
-            {"$addToSet": {"msg_ids": message_id}, "$set": {"updated_at": __import__("datetime").datetime.utcnow()}},
+            {"$addToSet": {"msg_ids": message_id}, "$set": {"updated_at": _dt.utcnow()}},
             upsert=True
         )
     except Exception as e:
         logger.debug(f"track_dm_msg: {e}")
+
+def mark_user_activity(user_id: int):
+    """User ne bot use kiya (download/request) — clear-chat reminder ke liye"""
+    try:
+        from datetime import datetime as _dt
+        users_collection.update_one(
+            {"_id": user_id},
+            {"$set": {"last_bot_activity": _dt.utcnow()}},
+            upsert=True
+        )
+    except Exception as e:
+        logger.debug(f"mark_user_activity: {e}")
 
 async def clear_user_dm(bot, user_id: int, extra_ids=None):
     """User ke DM se bot ke tracked messages delete — chat clean lage"""
@@ -1419,7 +1436,7 @@ async def _update_anime_timestamp(anime_name: str):
 (DS_GET_ANIME, DS_GET_SEASON, DS_CONFIRM) = range(31, 34) 
 (DE_GET_ANIME, DE_GET_SEASON, DE_GET_EPISODE, DE_CONFIRM) = range(34, 38) 
 (M_GET_DONATE_THANKS, M_GET_FILE_WARNING) = range(40, 42) 
-(CS_GET_DELETE_TIME, CS_GET_PROMO_DELETE, CS_GET_PREVIEW_DELETE) = range(45, 48) 
+(CS_GET_DELETE_TIME, CS_GET_PROMO_DELETE, CS_GET_PREVIEW_DELETE, CS_GET_CLEAR_REMINDER) = range(45, 49) 
 (UP_GET_ANIME, UP_GET_TARGET, UP_GET_POSTER) = range(48, 51) 
 (CA_GET_ID, CA_CONFIRM) = range(51, 53) 
 (CR_GET_ID, CR_CONFIRM) = range(53, 55) 
@@ -3254,6 +3271,122 @@ async def handle_promo_delete_save(update: Update, context: ContextTypes.DEFAULT
         await update.message.reply_text("Sirf number bhejo (seconds). Example: <code>120</code>", parse_mode=ParseMode.HTML)
         return CS_GET_PROMO_DELETE
 
+async def set_clear_reminder_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Hours after activity to remind user to clear chat"""
+    query = update.callback_query
+    await query.answer()
+    config = await get_config()
+    current = float(config.get("chat_clear_reminder_hours") or 6)
+    await query.edit_message_text(
+        f"🧹 <b>Clear Chat Reminder</b>\n\n"
+        f"Abhi: <b>{current} hours</b>\n\n"
+        f"User ne movie request / download kiya ho to itne hours baad "
+        f"reminder bhejega + <b>Clear Chats</b> button.\n\n"
+        f"Hours number bhejo (example: <code>6</code> ya <code>8</code>).\n"
+        f"Min 1, max 48.\n\n/cancel - Cancel",
+        parse_mode=ParseMode.HTML,
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="admin_menu_auto_delete")]])
+    )
+    return CS_GET_CLEAR_REMINDER
+
+async def handle_clear_reminder_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        hrs = float(update.message.text.strip().replace(",", "."))
+        if hrs < 1 or hrs > 48:
+            await update.message.reply_text("1 se 48 hours ke beech number bhejo.")
+            return CS_GET_CLEAR_REMINDER
+        config_collection.update_one(
+            {"_id": "bot_config"},
+            {"$set": {"chat_clear_reminder_hours": hrs}},
+            upsert=True
+        )
+        await update.message.reply_text(
+            f"✅ Clear Chat Reminder set to <b>{hrs} hours</b>.",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Auto-Delete Menu", callback_data="admin_menu_auto_delete")]])
+        )
+        return ConversationHandler.END
+    except ValueError:
+        await update.message.reply_text("Sirf number bhejo (jaise 6).")
+        return CS_GET_CLEAR_REMINDER
+
+async def clear_chats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """User ne Clear Chats button dabaya — bot messages delete"""
+    query = update.callback_query
+    await query.answer("Clearing…")
+    uid = query.from_user.id
+    try:
+        await clear_user_dm(context.bot, uid, extra_ids=[query.message.message_id] if query.message else None)
+        try:
+            await query.edit_message_text("✅ Chat cleared. Bot messages remove ho gaye.")
+        except Exception:
+            try:
+                await context.bot.send_message(uid, "✅ Chat cleared.")
+            except Exception:
+                pass
+    except Exception as e:
+        logger.error(f"clear_chats_callback: {e}")
+        try:
+            await query.answer("Clear fail. Manually clear chat try karo.", show_alert=True)
+        except Exception:
+            pass
+
+async def send_clear_chat_reminders(bot):
+    """Active users ko reminder bhejo (request/download kiya ho)"""
+    try:
+        from datetime import datetime, timedelta
+        config = config_collection.find_one({"_id": "bot_config"}) or {}
+        hrs = float(config.get("chat_clear_reminder_hours") or 6)
+        if hrs < 1:
+            return
+        cutoff = datetime.utcnow() - timedelta(hours=hrs)
+        # Users who were active before cutoff and not reminded since that activity
+        cursor = users_collection.find({
+            "last_bot_activity": {"$lte": cutoff, "$exists": True},
+            "$or": [
+                {"last_clear_reminder_at": {"$exists": False}},
+                {"last_clear_reminder_at": {"$lt": "$last_bot_activity"}},  # may not work in mongo simple
+            ]
+        }).limit(50)
+        msg = (
+            "🧹 <b>Please clear this chat</b>\n\n"
+            "Bot messages clean rakhne ke liye neeche button dabao.\n"
+            "Ya Telegram mein chat open karke Clear history bhi kar sakte ho."
+        )
+        btn = InlineKeyboardMarkup([[InlineKeyboardButton("🧹 Clear Chats", callback_data="user_clear_chats")]])
+        sent_n = 0
+        for u in cursor:
+            uid = u.get("_id")
+            if not uid:
+                continue
+            last_act = u.get("last_bot_activity")
+            last_rem = u.get("last_clear_reminder_at")
+            if last_rem and last_act and last_rem >= last_act:
+                continue
+            try:
+                sent = await bot.send_message(chat_id=uid, text=msg, parse_mode=ParseMode.HTML, reply_markup=btn)
+                track_dm_msg(uid, sent.message_id)
+                users_collection.update_one(
+                    {"_id": uid},
+                    {"$set": {"last_clear_reminder_at": datetime.utcnow()}}
+                )
+                sent_n += 1
+            except Exception as e:
+                logger.debug(f"clear reminder to {uid}: {e}")
+        if sent_n:
+            logger.info(f"Clear-chat reminders sent: {sent_n}")
+    except Exception as e:
+        logger.error(f"send_clear_chat_reminders: {e}")
+
+async def clear_reminder_loop(bot):
+    """Har 20 min active users check"""
+    while True:
+        try:
+            await send_clear_chat_reminders(bot)
+        except Exception as e:
+            logger.error(f"clear_reminder_loop: {e}")
+        await asyncio.sleep(20 * 60)
+
 async def auto_delete_settings_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """All auto-delete timers in one place"""
     query = update.callback_query
@@ -3262,6 +3395,7 @@ async def auto_delete_settings_menu(update: Update, context: ContextTypes.DEFAUL
     file_secs = int(config.get("delete_seconds", 300))
     thank_secs = int(config.get("promo_thank_you_delete_seconds") or 120)
     admin_secs = int(config.get("admin_preview_delete_seconds") or 30)
+    remind_hrs = float(config.get("chat_clear_reminder_hours") or 6)
     
     def _fmt(s):
         m, sec = divmod(int(s), 60)
@@ -3271,13 +3405,16 @@ async def auto_delete_settings_menu(update: Update, context: ContextTypes.DEFAUL
         "⏱️ <b>Auto-Delete Time Settings</b>\n\n"
         f"📁 <b>File Delete:</b> {_fmt(file_secs)} ({file_secs}s)\n"
         f"📢 <b>Promo Message:</b> {_fmt(thank_secs)} ({thank_secs}s)\n"
-        f"👑 <b>Admin Preview Msgs:</b> {_fmt(admin_secs)} ({admin_secs}s)\n\n"
-        "Kaunsa timer change karna hai?"
+        f"👑 <b>Admin Preview Msgs:</b> {_fmt(admin_secs)} ({admin_secs}s)\n"
+        f"🧹 <b>Clear Chat Reminder:</b> {remind_hrs}h\n\n"
+        "Kaunsa timer change karna hai?\n"
+        "<i>Clear Chat Reminder = active users ko X hours baad reminder + Clear button.</i>"
     )
     keyboard = [
         [InlineKeyboardButton(f"📁 File Delete Time ({_fmt(file_secs)})", callback_data="admin_set_delete_time")],
         [InlineKeyboardButton(f"📢 Promo Delete Time ({_fmt(thank_secs)})", callback_data="admin_set_promo_delete")],
         [InlineKeyboardButton(f"👑 Admin Preview Delete ({_fmt(admin_secs)})", callback_data="admin_set_preview_delete")],
+        [InlineKeyboardButton(f"🧹 Clear Chat Reminder ({remind_hrs}h)", callback_data="admin_set_clear_reminder")],
         [InlineKeyboardButton("⬅️ Back to Admin Menu", callback_data="admin_menu")],
     ]
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
@@ -6176,6 +6313,7 @@ async def send_promo_thank_you(bot, user_id: int):
             plain = _re.sub(r'<[^>]+>', '', full_msg or '')
             sent = await bot.send_message(chat_id=user_id, text=plain, reply_markup=reply_markup)
         track_dm_msg(user_id, sent.message_id)
+        mark_user_activity(user_id)
         # Promo time khatam = SAARA bot DM clean (files + status + promo)
         try:
             await schedule_clear_user_dm(bot, user_id, thank_secs, extra_ids=[sent.message_id])
@@ -6417,6 +6555,7 @@ async def request_receive(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     from datetime import datetime
     await log_movie_request(user.id)
+    mark_user_activity(user.id)
     context.user_data["awaiting_movie_request"] = False
     
     uname = user.username or "no_username"
@@ -7424,6 +7563,12 @@ def run_async_bot_tasks(loop, app):
         loop.run_until_complete(app.initialize())
         loop.run_until_complete(app.start())
         logger.info("Bot application initialized and started (async).")
+        # Clear-chat reminder background loop
+        try:
+            loop.create_task(clear_reminder_loop(app.bot))
+            logger.info("Clear-chat reminder loop started.")
+        except Exception as e:
+            logger.error(f"Clear reminder loop start failed: {e}")
         
         loop.run_forever() 
         
@@ -7811,11 +7956,13 @@ def main():
             CallbackQueryHandler(set_delete_time_start, pattern="^admin_set_delete_time$"),
             CallbackQueryHandler(set_promo_delete_start, pattern="^admin_set_promo_delete$"),
             CallbackQueryHandler(set_admin_preview_delete_start, pattern="^admin_set_preview_delete$"),
+            CallbackQueryHandler(set_clear_reminder_start, pattern="^admin_set_clear_reminder$"),
         ],
         states={
             CS_GET_DELETE_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_delete_time_save)],
             CS_GET_PROMO_DELETE: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_promo_delete_save)],
             CS_GET_PREVIEW_DELETE: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_preview_delete_save)],
+            CS_GET_CLEAR_REMINDER: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_clear_reminder_save)],
         },
         fallbacks=global_fallbacks + admin_menu_fallback, 
         allow_reentry=True 
@@ -7980,6 +8127,7 @@ def main():
     bot_app.add_handler(custom_post_conv)
     bot_app.add_handler(broadcast_conv) # NAYA v34
     bot_app.add_handler(CallbackQueryHandler(back_to_admin_menu, pattern="^admin_menu$"))
+    bot_app.add_handler(CallbackQueryHandler(clear_chats_callback, pattern="^user_clear_chats$"))
     bot_app.add_handler(CallbackQueryHandler(auto_delete_settings_menu, pattern="^admin_menu_auto_delete$"))
     bot_app.add_handler(CallbackQueryHandler(back_to_admin_settings_menu, pattern="^admin_menu_admin_settings$|^back_to_admin_settings$"))
     # Promo + Preview delete timers ab set_delete_time_conv ke andar handle hote hain
