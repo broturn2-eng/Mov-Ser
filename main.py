@@ -651,6 +651,7 @@ LANGUAGE_PACKS = {
         "user_request_received": "✅ <b>Request received!</b>\n\nDeveloper will update it shortly. Keep patience.",
         "user_request_admin_notify": "📩 <b>New Movie Request</b>\n\nFrom: {name} (@{username})\nID: <code>{user_id}</code>\n\n{text}\n\n💡 <i>Is message pe Reply karke user ko jawab do.</i>",
         "user_request_cancelled": "❌ Request cancelled.",
+        "clear_chat_greeting": "✅ <b>Chat cleared!</b>\n\nFresh start — neeche se continue karo.",
         "user_dl_anime_not_found": "❌ <f>Error: Series/Movie not found.</f>",
         "user_dl_select_season": "<b>{anime_name}</b>\n\n<f>Select season:</f>",
         "user_dl_select_episode": "<b>{anime_name}</b> | <b>Season {season_name}</b>\n\n<f>Select episode:</f>",
@@ -3356,20 +3357,39 @@ async def clear_chats_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                     await bot.delete_message(chat_id=uid, message_id=mid)
                 except Exception:
                     pass
-        # 3) Fresh start — clean menu buttons
+        # 3) Fresh start — greeting (Bot Messages) + Visit Channel first
         try:
             config = await get_config()
             links = config.get("links") or {}
-            backup = links.get("backup") or f"https://t.me/{(await bot.get_me()).username}"
+            me = await bot.get_me()
+            backup = links.get("backup") or f"https://t.me/{me.username}"
             help_u = links.get("help") or backup
-            kb = [
-                [InlineKeyboardButton("🎬 Request a Movie", url=f"https://t.me/{(await bot.get_me()).username}?start=request")],
-                [InlineKeyboardButton("📦 Backup", url=backup), InlineKeyboardButton("🆘 Help", url=help_u)],
-                [InlineKeyboardButton("❤️ Donate", callback_data="user_show_donate_menu")],
-            ]
+            channel = links.get("channel") or links.get("backup") or f"https://t.me/{me.username}"
+            visit_txt = config.get("btn_text_visit_channel") or "📢 Visit Channel"
+            backup_txt = config.get("btn_text_backup") or "📦 Backup"
+            help_txt = config.get("btn_text_help") or "🆘 Help"
+            donate_txt = config.get("btn_text_donate") or "❤️ Donate"
+            try:
+                greet = await format_message(context, "clear_chat_greeting")
+                greet = safe_html_message(greet or "")
+            except Exception:
+                greet = config.get("messages", {}).get("clear_chat_greeting") or (
+                    "✅ <b>Chat cleared!</b>\n\nFresh start — neeche se continue karo."
+                )
+            kb = []
+            if channel:
+                kb.append([InlineKeyboardButton(visit_txt, url=channel)])
+            row2 = []
+            if backup:
+                row2.append(InlineKeyboardButton(backup_txt, url=backup))
+            if help_u:
+                row2.append(InlineKeyboardButton(help_txt, url=help_u))
+            if row2:
+                kb.append(row2)
+            kb.append([InlineKeyboardButton(donate_txt, callback_data="user_show_donate_menu")])
             await bot.send_message(
                 chat_id=uid,
-                text="✅ <b>Chat cleared!</b>\n\nFresh start — neeche se continue karo.",
+                text=greet,
                 parse_mode=ParseMode.HTML,
                 reply_markup=InlineKeyboardMarkup(kb)
             )
@@ -3595,6 +3615,10 @@ async def set_links_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if link_type == "backup_link":
         context.user_data['link_type'] = "backup"
         text = await format_message(context, "admin_set_link_backup")
+        back_button = "back_to_links"
+    elif link_type == "channel_link":
+        context.user_data['link_type'] = "channel"
+        text = "📢 <b>Main Channel</b> ka link bhejo.\n(Example: https://t.me/yourchannel)\n\nClear Chat → Visit Channel yahi use karega.\n\n/skip - Clear\n/cancel - Cancel"
         back_button = "back_to_links"
     elif link_type == "download_link":
         context.user_data['link_type'] = "download"
@@ -4960,6 +4984,10 @@ async def set_links_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['link_type'] = "backup"
         text = await format_message(context, "admin_set_link_backup")
         back_button = "back_to_links"
+    elif link_type == "channel_link":
+        context.user_data['link_type'] = "channel"
+        text = "📢 <b>Main Channel</b> ka link bhejo.\n(Example: https://t.me/yourchannel)\n\nClear Chat → Visit Channel yahi use karega.\n\n/skip - Clear\n/cancel - Cancel"
+        back_button = "back_to_links"
     elif link_type == "download_link":
         context.user_data['link_type'] = "download"
         text = await format_message(context, "admin_set_link_download")
@@ -5619,6 +5647,7 @@ async def other_links_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     verify_status = "✅" if config.get('links', {}).get('verify') or config.get('verify_video_id') else "❌"
     keyboard = [
         [InlineKeyboardButton(f"Set Backup Link {backup_status}", callback_data="admin_set_backup_link")],
+        [InlineKeyboardButton(f"Set Channel Link {('✅' if config.get('links', {}).get('channel') else '❌')}", callback_data="admin_set_channel_link")],
         [InlineKeyboardButton(f"Set Download Link {download_status}", callback_data="admin_set_download_link")], 
         [InlineKeyboardButton(f"Set Help Link {help_status}", callback_data="admin_set_help_link")],
         [InlineKeyboardButton(f"✅ Set Verify Link {verify_status}", callback_data="admin_set_verify_link")],
@@ -5699,6 +5728,7 @@ async def bot_messages_menu_gen(update: Update, context: ContextTypes.DEFAULT_TY
         [InlineKeyboardButton("Edit Request Admin Notify", callback_data="msg_edit_user_request_admin_notify")],
         [InlineKeyboardButton("Edit Request Cancelled", callback_data="msg_edit_user_request_cancelled")],
         [InlineKeyboardButton("📩 Developer Reply Prefix", callback_data="msg_edit_request_dev_reply_prefix")],
+        [InlineKeyboardButton("🧹 Clear Chat Greeting", callback_data="msg_edit_clear_chat_greeting")],
         [InlineKeyboardButton("Edit Request Start (alt)", callback_data="msg_edit_request_start")],
         [InlineKeyboardButton("Edit Request Received (alt)", callback_data="msg_edit_request_received")],
         [InlineKeyboardButton("Edit Request Limit (alt)", callback_data="msg_edit_request_limit_reached")],
@@ -6103,6 +6133,8 @@ async def post_buttons_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton(f"✏️ Request: {t_request[:15]}", callback_data="pbtn_request")],
         [InlineKeyboardButton(f"✏️ Download: {t_download[:15]}", callback_data="pbtn_download")],
         [InlineKeyboardButton("✏️ Refresh Timer Button Text", callback_data="pbtn_refresh")],
+        [InlineKeyboardButton("✏️ Visit Channel Button Text", callback_data="pbtn_visit_channel")],
+        [InlineKeyboardButton("🔗 Set Channel Link (Visit)", callback_data="admin_set_channel_link")],
         [InlineKeyboardButton("🔗 Set Verify Link", callback_data="admin_set_verify_link")],
         [InlineKeyboardButton("🎬 Set Verify How-To Video", callback_data="admin_set_verify_video")],
         [InlineKeyboardButton("🎬 Set Request Link", callback_data="admin_set_request_link")],
@@ -6264,6 +6296,7 @@ async def post_btn_text_start(update: Update, context: ContextTypes.DEFAULT_TYPE
         "pbtn_request": ("btn_text_request", "Request a Movie"),
         "pbtn_download": ("btn_text_download", "Download"),
         "pbtn_refresh": ("btn_text_refresh_timer", "Refresh Timer"),
+        "pbtn_visit_channel": ("btn_text_visit_channel", "Visit Channel"),
     }
     conf_key, label = key_map.get(data, (None, None))
     if not conf_key:
@@ -7355,12 +7388,31 @@ async def download_button_handler(update: Update, context: ContextTypes.DEFAULT_
                 _h, _m, _s = delete_time // 3600, (delete_time % 3600) // 60, delete_time % 60
                 tstr = f"{_h}h {_m}m {_s}s" if _h else (f"{_m}m {_s}s" if _m else f"{_s}s")
                 rtxt = (config_collection.find_one({"_id": "bot_config"}) or {}).get("btn_text_refresh_timer") or "🔄 Refresh Timer"
+                # Purana refresh/timer msg hatao — sirf EK naya
+                try:
+                    old_doc = db['user_delete_timers'].find_one({"user_id": user_id}) or {}
+                    old_tid = old_doc.get("timer_msg_id")
+                    if old_tid:
+                        try:
+                            await context.bot.delete_message(chat_id=user_id, message_id=old_tid)
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
                 timer_msg = await context.bot.send_message(
                     chat_id=user_id,
                     text=f"⏳ <b>Files auto-delete in:</b> <code>{tstr}</code>\n\nRefresh dabake remaining time dekho.",
                     parse_mode=ParseMode.HTML,
                     reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(rtxt, callback_data="file_timer_refresh")]])
                 )
+                try:
+                    db['user_delete_timers'].update_one(
+                        {"user_id": user_id},
+                        {"$set": {"timer_msg_id": timer_msg.message_id}},
+                        upsert=True
+                    )
+                except Exception:
+                    pass
                 asyncio.create_task(delete_message_later(
                     bot=context.bot, chat_id=user_id, message_id=timer_msg.message_id, seconds=delete_time
                 ))
@@ -7582,12 +7634,31 @@ async def download_button_handler(update: Update, context: ContextTypes.DEFAULT_
                 _h, _m, _s = delete_time // 3600, (delete_time % 3600) // 60, delete_time % 60
                 tstr = f"{_h}h {_m}m {_s}s" if _h else (f"{_m}m {_s}s" if _m else f"{_s}s")
                 rtxt = (config_collection.find_one({"_id": "bot_config"}) or {}).get("btn_text_refresh_timer") or "🔄 Refresh Timer"
+                # Purana refresh/timer msg hatao — sirf EK naya
+                try:
+                    old_doc = db['user_delete_timers'].find_one({"user_id": user_id}) or {}
+                    old_tid = old_doc.get("timer_msg_id")
+                    if old_tid:
+                        try:
+                            await context.bot.delete_message(chat_id=user_id, message_id=old_tid)
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
                 timer_msg = await context.bot.send_message(
                     chat_id=user_id,
                     text=f"⏳ <b>Files auto-delete in:</b> <code>{tstr}</code>\n\nRefresh dabake remaining time dekho.",
                     parse_mode=ParseMode.HTML,
                     reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(rtxt, callback_data="file_timer_refresh")]])
                 )
+                try:
+                    db['user_delete_timers'].update_one(
+                        {"user_id": user_id},
+                        {"$set": {"timer_msg_id": timer_msg.message_id}},
+                        upsert=True
+                    )
+                except Exception:
+                    pass
                 asyncio.create_task(delete_message_later(
                     bot=context.bot, chat_id=user_id, message_id=timer_msg.message_id, seconds=delete_time
                 ))
@@ -7892,7 +7963,7 @@ def main():
         allow_reentry=True 
     )
     set_links_conv = ConversationHandler(
-        entry_points=[CallbackQueryHandler(set_links_start, pattern="^admin_set_backup_link$|^admin_set_download_link$|^admin_set_help_link$|^admin_set_verify_link$|^admin_set_request_link$")], # NAYA
+        entry_points=[CallbackQueryHandler(set_links_start, pattern="^admin_set_backup_link$|^admin_set_channel_link$|^admin_set_download_link$|^admin_set_help_link$|^admin_set_verify_link$|^admin_set_request_link$")], # NAYA
         states={CL_GET_LINK: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_link), CommandHandler("skip", skip_link)]}, 
         fallbacks=global_fallbacks + links_fallback,
         allow_reentry=True 
