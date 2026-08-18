@@ -1240,19 +1240,8 @@ def sanitize_telegram_html(text: str) -> str:
 
 
 def safe_html_message(text: str) -> str:
-    """Final pass before send — guarantee parseable HTML, keep quote if possible."""
-    import re
-    t = sanitize_telegram_html(text or "")
-    # If still has unmatched angle-bracket noise, wrap plain content in blockquote when user intended quote
-    if "<blockquote" in t.lower() or "</blockquote>" in t.lower():
-        # strip all blockquotes and re-wrap whole body once (safe)
-        body = re.sub(r"</?blockquote[^>]*>", "", t, flags=re.I).strip()
-        body = sanitize_telegram_html(body)
-        if body:
-            t = f"<blockquote>{body}</blockquote>"
-        else:
-            t = body
-    return t
+    """Only fix broken tags — selective <blockquote> preserve (poora text mat wrap karo)."""
+    return sanitize_telegram_html(text or "")
 
 
 
@@ -3351,23 +3340,49 @@ async def handle_clear_reminder_save(update: Update, context: ContextTypes.DEFAU
         return CS_GET_CLEAR_REMINDER
 
 async def clear_chats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """User ne Clear Chats button dabaya — bot messages delete"""
+    """Clear Chats: bot msgs delete (tracked + recent scan) + fresh start menu"""
     query = update.callback_query
-    await query.answer("Clearing…")
+    await query.answer("Clearing chat…")
     uid = query.from_user.id
+    bot = context.bot
     try:
-        await clear_user_dm(context.bot, uid, extra_ids=[query.message.message_id] if query.message else None)
+        start_id = query.message.message_id if query.message else None
+        # 1) Tracked session msgs
+        await clear_user_dm(bot, uid, extra_ids=[start_id] if start_id else None)
+        # 2) Scan backwards — bot-sent recent messages (Telegram allows bot to delete own msgs)
+        if start_id:
+            for mid in range(start_id, max(1, start_id - 120), -1):
+                try:
+                    await bot.delete_message(chat_id=uid, message_id=mid)
+                except Exception:
+                    pass
+        # 3) Fresh start — clean menu buttons
         try:
-            await query.edit_message_text("✅ Chat cleared. Bot messages remove ho gaye.")
-        except Exception:
+            config = await get_config()
+            links = config.get("links") or {}
+            backup = links.get("backup") or f"https://t.me/{(await bot.get_me()).username}"
+            help_u = links.get("help") or backup
+            kb = [
+                [InlineKeyboardButton("🎬 Request a Movie", url=f"https://t.me/{(await bot.get_me()).username}?start=request")],
+                [InlineKeyboardButton("📦 Backup", url=backup), InlineKeyboardButton("🆘 Help", url=help_u)],
+                [InlineKeyboardButton("❤️ Donate", callback_data="user_show_donate_menu")],
+            ]
+            await bot.send_message(
+                chat_id=uid,
+                text="✅ <b>Chat cleared!</b>\n\nFresh start — neeche se continue karo.",
+                parse_mode=ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup(kb)
+            )
+        except Exception as e:
+            logger.warning(f"fresh start after clear: {e}")
             try:
-                await context.bot.send_message(uid, "✅ Chat cleared.")
+                await bot.send_message(uid, "✅ Chat cleared! /start se dobara shuru karo.")
             except Exception:
                 pass
     except Exception as e:
         logger.error(f"clear_chats_callback: {e}")
         try:
-            await query.answer("Clear fail. Manually clear chat try karo.", show_alert=True)
+            await query.answer("Clear partial. /start try karo.", show_alert=True)
         except Exception:
             pass
 
