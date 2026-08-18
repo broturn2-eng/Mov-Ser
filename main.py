@@ -625,9 +625,12 @@ async def format_message(context: ContextTypes.DEFAULT_TYPE, key: str, variables
     formatted_text = await apply_font_formatting(text_with_vars, font_settings)
     # 4. HTML balance — blockquote/bold Telegram accept kare
     try:
-        formatted_text = sanitize_telegram_html(formatted_text or "")
+        formatted_text = safe_html_message(formatted_text or "")
     except Exception:
-        pass
+        try:
+            formatted_text = sanitize_telegram_html(formatted_text or "")
+        except Exception:
+            pass
     return formatted_text
 
 
@@ -1146,32 +1149,36 @@ def build_grid_keyboard(buttons, items_per_row=2):
 # NAYA (v10): Pagination Helper
 
 def sanitize_telegram_html(text: str) -> str:
-    """Fix broken HTML so Telegram accepts it. Keep blockquotes + bold."""
+    """Aggressive but safe HTML fix so Telegram always accepts blockquote/bold."""
     if not text:
         return text or ""
     import re
     text = text.replace("<br>", "\n").replace("<br/>", "\n").replace("<br />", "\n")
-    
-    # Fix common broken patterns from templates:
-    # <b>LABEL: value  without closing </b> before next tag/newline
-    # Close <b> that was opened for a label if </b> missing before : or end of short run
-    # More reliable: walk and close open inline tags before block boundaries
-    
-    INLINE_OPENS = {
-        '<b>': '</b>', '<i>': '</i>', '<u>': '</u>', '<s>': '</s>',
-        '<code>': '</code>', '<strong>': '</strong>', '<em>': '</em>',
+    # Common typos
+    text = re.sub(r'</?blockquot\b', lambda m: m.group(0).replace('blockquot', 'blockquote'), text, flags=re.I)
+    text = text.replace("</blockquot>", "</blockquote>").replace("<blockquot>", "<blockquote>")
+
+    # Remove zero-width / weird chars that break parsers
+    text = text.replace("\u200b", "").replace("\ufeff", "")
+
+    INLINE = {
+        "b": "b", "i": "i", "u": "u", "s": "s", "code": "code",
+        "strong": "strong", "em": "em", "pre": "pre",
     }
-    
-    def _close_open_inline(t: str) -> str:
-        """Before every </blockquote> and at EOF, close any open inline tags."""
+
+    def _close_before_boundaries(t: str) -> str:
+        """Close open inline tags before blockquote boundaries and EOF."""
         lower = t.lower()
-        stack = []  # list of close tags needed
+        stack = []  # close tags needed
         out = []
         i = 0
-        while i < len(t):
+        n = len(t)
+        while i < n:
+            # open inline
             matched = False
-            # check open tags
-            for ot, ct in INLINE_OPENS.items():
+            for name in INLINE:
+                ot = f"<{name}>"
+                ct = f"</{name}>"
                 if lower.startswith(ot, i):
                     stack.append(ct)
                     out.append(t[i:i+len(ot)])
@@ -1179,7 +1186,6 @@ def sanitize_telegram_html(text: str) -> str:
                     matched = True
                     break
                 if lower.startswith(ct, i):
-                    # pop if matches
                     if stack and stack[-1] == ct:
                         stack.pop()
                     out.append(t[i:i+len(ct)])
@@ -1188,55 +1194,66 @@ def sanitize_telegram_html(text: str) -> str:
                     break
             if matched:
                 continue
-            if lower.startswith('</blockquote>', i):
-                # close all open inline before blockquote ends
+            if lower.startswith("<blockquote", i):
+                while stack:
+                    out.append(stack.pop())
+                j = t.find(">", i)
+                if j < 0:
+                    out.append(t[i]); i += 1
+                else:
+                    out.append(t[i:j+1]); i = j + 1
+                continue
+            if lower.startswith("</blockquote>", i):
                 while stack:
                     out.append(stack.pop())
                 out.append(t[i:i+13])
                 i += 13
                 continue
-            if lower.startswith('<blockquote', i):
-                # close open inline before new block starts
-                while stack:
-                    out.append(stack.pop())
-                # copy until >
-                j = t.find('>', i)
-                if j < 0:
-                    out.append(t[i])
-                    i += 1
-                else:
-                    out.append(t[i:j+1])
-                    i = j + 1
-                continue
             out.append(t[i])
             i += 1
         while stack:
             out.append(stack.pop())
-        return ''.join(out)
-    
-    text = _close_open_inline(text)
-    
+        return "".join(out)
+
+    text = _close_before_boundaries(text)
+
     def _balance(t, open_pat, close_tag):
         opens = len(re.findall(open_pat, t, flags=re.I))
         closes = len(re.findall(re.escape(close_tag), t, flags=re.I))
         if opens > closes:
             t = t + (close_tag * (opens - closes))
         elif closes > opens:
-            extra = closes - opens
-            for _ in range(extra):
+            for _ in range(closes - opens):
                 idx = t.lower().rfind(close_tag.lower())
                 if idx >= 0:
                     t = t[:idx] + t[idx+len(close_tag):]
         return t
-    
+
     text = _balance(text, r"<b>", "</b>")
     text = _balance(text, r"<i>", "</i>")
-    text = _balance(text, r"<code>", "</code>")
     text = _balance(text, r"<u>", "</u>")
     text = _balance(text, r"<s>", "</s>")
+    text = _balance(text, r"<code>", "</code>")
     text = _balance(text, r"<pre>", "</pre>")
     text = _balance(text, r"<blockquote[^>]*>", "</blockquote>")
     return text
+
+
+def safe_html_message(text: str) -> str:
+    """Final pass before send — guarantee parseable HTML, keep quote if possible."""
+    import re
+    t = sanitize_telegram_html(text or "")
+    # If still has unmatched angle-bracket noise, wrap plain content in blockquote when user intended quote
+    if "<blockquote" in t.lower() or "</blockquote>" in t.lower():
+        # strip all blockquotes and re-wrap whole body once (safe)
+        body = re.sub(r"</?blockquote[^>]*>", "", t, flags=re.I).strip()
+        body = sanitize_telegram_html(body)
+        if body:
+            t = f"<blockquote>{body}</blockquote>"
+        else:
+            t = body
+    return t
+
 
 
 async def build_paginated_keyboard(
@@ -6472,10 +6489,10 @@ async def handle_deep_link_request(user: User, context: ContextTypes.DEFAULT_TYP
         return
     try:
         text = await format_message(context, "user_request_prompt", {"remaining": str(remaining)})
-        text = sanitize_telegram_html(text or "")
+        text = safe_html_message(text or "")
     except Exception as e:
         logger.error(f"request prompt format: {e}")
-        text = f"🎬 <b>Request a Movie</b>\n\nApni movie/series ka naam likh ke bhejo.\n\nRemaining today: <b>{remaining}/3</b>\n\n/cancel - Cancel"
+        text = f"<blockquote>🎬 <b>Request a Movie</b>\n\nApni movie/series ka naam likh ke bhejo.\n\nRemaining today: <b>{remaining}/3</b></blockquote>"
     try:
         sent = await context.bot.send_message(
             chat_id=user.id,
@@ -6486,13 +6503,23 @@ async def handle_deep_link_request(user: User, context: ContextTypes.DEFAULT_TYP
         track_dm_msg(user.id, sent.message_id)
     except BadRequest as e:
         logger.error(f"request prompt HTML fail: {e}")
+        # Last resort: one clean blockquote with stripped inner tags except basic
         import re as _re
-        plain = _re.sub(r'<[^>]+>', '', text or '')
-        sent = await context.bot.send_message(
-            chat_id=user.id,
-            text=plain or "Request a Movie — naam bhejo /cancel se cancel.",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📝 Type request below", callback_data="noop")]])
-        )
+        plain = _re.sub(r'<[^>]+>', '', text or '').strip()
+        fallback = f"<blockquote>{plain}</blockquote>" if plain else "🎬 Request a Movie — naam bhejo."
+        try:
+            sent = await context.bot.send_message(
+                chat_id=user.id,
+                text=fallback,
+                parse_mode=ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📝 Type request below", callback_data="noop")]])
+            )
+        except Exception:
+            sent = await context.bot.send_message(
+                chat_id=user.id,
+                text=plain or "Request a Movie — naam bhejo.",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📝 Type request below", callback_data="noop")]])
+            )
         track_dm_msg(user.id, sent.message_id)
     context.user_data["awaiting_movie_request"] = True
     context.user_data["request_mode"] = True
@@ -6515,18 +6542,22 @@ async def request_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
     try:
         text = await format_message(context, "user_request_prompt", {"remaining": str(remaining)})
-        text = sanitize_telegram_html(text or "")
+        text = safe_html_message(text or "")
     except Exception as e:
         logger.error(f"request_command prompt: {e}")
-        text = f"🎬 <b>Request a Movie</b>\n\nApni movie/series ka naam likh ke bhejo.\n\nRemaining: <b>{remaining}/3</b>"
+        text = f"<blockquote>🎬 <b>Request a Movie</b>\n\nApni movie/series ka naam likh ke bhejo.\n\nRemaining: <b>{remaining}/3</b></blockquote>"
     try:
         sent = await update.message.reply_text(text, parse_mode=ParseMode.HTML)
         track_dm_msg(user.id, sent.message_id)
     except BadRequest as e:
         logger.error(f"request_command HTML fail: {e}")
         import re as _re
-        plain = _re.sub(r'<[^>]+>', '', text or '')
-        sent = await update.message.reply_text(plain or "Request a Movie — naam bhejo.")
+        plain = _re.sub(r'<[^>]+>', '', text or '').strip()
+        fallback = f"<blockquote>{plain}</blockquote>" if plain else "Request a Movie — naam bhejo."
+        try:
+            sent = await update.message.reply_text(fallback, parse_mode=ParseMode.HTML)
+        except Exception:
+            sent = await update.message.reply_text(plain or "Request a Movie — naam bhejo.")
         track_dm_msg(user.id, sent.message_id)
     context.user_data["awaiting_movie_request"] = True
     return REQ_GET_TEXT
