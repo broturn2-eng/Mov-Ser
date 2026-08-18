@@ -1332,6 +1332,8 @@ async def admin_reply_temp(update: Update, text: str, seconds: int = 60, **kwarg
 
 async def schedule_admin_msg_delete(bot, chat_id, message_id, seconds=60):
     try:
+        track_dm_msg(chat_id, message_id)
+        # Single msg delete as backup; bulk clear also scheduled at end of post flow
         asyncio.create_task(delete_message_later(bot, chat_id, message_id, seconds))
     except Exception:
         pass
@@ -1344,6 +1346,53 @@ async def delete_message_later(bot, chat_id: int, message_id: int, seconds: int)
         logger.info(f"Auto-deleted message {message_id} for user {chat_id} (asyncio.sleep)")
     except Exception as e:
         logger.warning(f"Message (asyncio.sleep) delete karne me error: {e}")
+
+def track_dm_msg(user_id: int, message_id: int):
+    """Session messages track — baad me bulk clean ke liye"""
+    try:
+        if not message_id:
+            return
+        db['user_session_msgs'].update_one(
+            {"user_id": user_id},
+            {"$addToSet": {"msg_ids": message_id}, "$set": {"updated_at": __import__("datetime").datetime.utcnow()}},
+            upsert=True
+        )
+    except Exception as e:
+        logger.debug(f"track_dm_msg: {e}")
+
+async def clear_user_dm(bot, user_id: int, extra_ids=None):
+    """User ke DM se bot ke tracked messages delete — chat clean lage"""
+    try:
+        doc = db['user_session_msgs'].find_one({"user_id": user_id}) or {}
+        ids = list(doc.get("msg_ids") or [])
+        if extra_ids:
+            for mid in extra_ids:
+                if mid and mid not in ids:
+                    ids.append(mid)
+        deleted = 0
+        for mid in ids:
+            try:
+                await bot.delete_message(chat_id=user_id, message_id=mid)
+                deleted += 1
+            except Exception:
+                pass
+        db['user_session_msgs'].delete_one({"user_id": user_id})
+        logger.info(f"clear_user_dm: user={user_id} deleted={deleted}/{len(ids)}")
+    except Exception as e:
+        logger.warning(f"clear_user_dm failed: {e}")
+
+async def schedule_clear_user_dm(bot, user_id: int, seconds: int, extra_ids=None):
+    """Promo/timer ke baad pura DM clean"""
+    async def _job():
+        try:
+            await asyncio.sleep(max(1, int(seconds)))
+            await clear_user_dm(bot, user_id, extra_ids=extra_ids)
+        except Exception as e:
+            logger.warning(f"schedule_clear_user_dm: {e}")
+    try:
+        asyncio.create_task(_job())
+    except Exception as e:
+        logger.warning(f"schedule_clear_user_dm create: {e}")
 
 # NAYA: Anime ka timestamp update karne ke liye helper
 async def _update_anime_timestamp(anime_name: str):
@@ -4032,12 +4081,16 @@ async def post_preview_publish(update: Update, context: ContextTypes.DEFAULT_TYP
                 parse_mode=ParseMode.HTML,
                 reply_markup=context.user_data.get('post_keyboard')
             )
-        await _safe_edit_preview(query, f"✅ Post successfully published to <code>{default_chat}</code>!", auto_delete_sec=30)
-        # Extra: try hard-delete the preview message soon so admin DM clean rahe
+        cfg = await get_config()
+        admin_clean_sec = int(cfg.get("admin_preview_delete_seconds") or 30)
+        await _safe_edit_preview(query, f"✅ Post successfully published to <code>{default_chat}</code>!", auto_delete_sec=admin_clean_sec)
+        # Admin DM: tracked post-related msgs + success — sab clear after timer
         try:
-            await schedule_admin_msg_delete(context.bot, query.message.chat_id, query.message.message_id, 20)
-        except Exception:
-            pass
+            if query.message:
+                track_dm_msg(query.message.chat_id, query.message.message_id)
+            await schedule_clear_user_dm(context.bot, query.from_user.id, admin_clean_sec)
+        except Exception as e:
+            logger.warning(f"admin DM clear schedule: {e}")
     except Exception as e:
         logger.error(f"Preview publish error: {e}", exc_info=True)
         await _safe_edit_preview(query, f"❌ Publish failed:\n<code>{e}</code>\n\nChat ID check karo ya bot ko channel/group mein admin banao.")
@@ -6115,13 +6168,25 @@ async def send_promo_thank_you(bot, user_id: int):
         keyboard.append([InlineKeyboardButton(rtxt, callback_data="thankyou_timer_refresh")])
         
         reply_markup = InlineKeyboardMarkup(keyboard) if keyboard else None
-        sent = await bot.send_message(chat_id=user_id, text=full_msg, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
         try:
-            asyncio.create_task(delete_message_later(
-                bot=bot, chat_id=user_id, message_id=sent.message_id, seconds=thank_secs
-            ))
+            sent = await bot.send_message(chat_id=user_id, text=full_msg, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+        except BadRequest as e:
+            logger.error(f"Promo HTML fail: {e}")
+            import re as _re
+            plain = _re.sub(r'<[^>]+>', '', full_msg or '')
+            sent = await bot.send_message(chat_id=user_id, text=plain, reply_markup=reply_markup)
+        track_dm_msg(user_id, sent.message_id)
+        # Promo time khatam = SAARA bot DM clean (files + status + promo)
+        try:
+            await schedule_clear_user_dm(bot, user_id, thank_secs, extra_ids=[sent.message_id])
         except Exception as e:
-            logger.error(f"Thank you delete schedule failed: {e}")
+            logger.error(f"Thank you clear schedule failed: {e}")
+            try:
+                asyncio.create_task(delete_message_later(
+                    bot=bot, chat_id=user_id, message_id=sent.message_id, seconds=thank_secs
+                ))
+            except Exception:
+                pass
     except Exception as e:
         logger.error(f"Promo thank you send failed: {e}")
 
@@ -6267,13 +6332,30 @@ async def handle_deep_link_request(user: User, context: ContextTypes.DEFAULT_TYP
             msg = limit_msg
         await send_request_limit_msg(user, context, msg, user_id=user.id)
         return
-    text = await format_message(context, "user_request_prompt", {"remaining": str(remaining)})
-    await context.bot.send_message(
-        chat_id=user.id,
-        text=text,
-        parse_mode=ParseMode.HTML,
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📝 Type request below", callback_data="noop")]])
-    )
+    try:
+        text = await format_message(context, "user_request_prompt", {"remaining": str(remaining)})
+        text = sanitize_telegram_html(text or "")
+    except Exception as e:
+        logger.error(f"request prompt format: {e}")
+        text = f"🎬 <b>Request a Movie</b>\n\nApni movie/series ka naam likh ke bhejo.\n\nRemaining today: <b>{remaining}/3</b>\n\n/cancel - Cancel"
+    try:
+        sent = await context.bot.send_message(
+            chat_id=user.id,
+            text=text,
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📝 Type request below", callback_data="noop")]])
+        )
+        track_dm_msg(user.id, sent.message_id)
+    except BadRequest as e:
+        logger.error(f"request prompt HTML fail: {e}")
+        import re as _re
+        plain = _re.sub(r'<[^>]+>', '', text or '')
+        sent = await context.bot.send_message(
+            chat_id=user.id,
+            text=plain or "Request a Movie — naam bhejo /cancel se cancel.",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📝 Type request below", callback_data="noop")]])
+        )
+        track_dm_msg(user.id, sent.message_id)
     context.user_data["awaiting_movie_request"] = True
     context.user_data["request_mode"] = True
 
@@ -6293,8 +6375,21 @@ async def request_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             msg = limit_msg
         await send_request_limit_msg(update, context, msg)
         return ConversationHandler.END
-    text = await format_message(context, "user_request_prompt", {"remaining": str(remaining)})
-    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+    try:
+        text = await format_message(context, "user_request_prompt", {"remaining": str(remaining)})
+        text = sanitize_telegram_html(text or "")
+    except Exception as e:
+        logger.error(f"request_command prompt: {e}")
+        text = f"🎬 <b>Request a Movie</b>\n\nApni movie/series ka naam likh ke bhejo.\n\nRemaining: <b>{remaining}/3</b>"
+    try:
+        sent = await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+        track_dm_msg(user.id, sent.message_id)
+    except BadRequest as e:
+        logger.error(f"request_command HTML fail: {e}")
+        import re as _re
+        plain = _re.sub(r'<[^>]+>', '', text or '')
+        sent = await update.message.reply_text(plain or "Request a Movie — naam bhejo.")
+        track_dm_msg(user.id, sent.message_id)
     context.user_data["awaiting_movie_request"] = True
     return REQ_GET_TEXT
 
@@ -6963,6 +7058,16 @@ async def download_button_handler(update: Update, context: ContextTypes.DEFAULT_
                 logger.error(f"Timer status msg failed: {e}")
             
             # Thank you + promo channels
+            # Track all download-session messages for bulk clean on promo timeout
+            try:
+                for _mid in (file_msg_ids or []):
+                    track_dm_msg(user_id, _mid)
+                if msg_to_delete_id:
+                    track_dm_msg(user_id, msg_to_delete_id)
+                if locals().get("timer_msg") is not None:
+                    track_dm_msg(user_id, timer_msg.message_id)
+            except Exception as _te:
+                logger.debug(f"track before promo: {_te}")
             await send_promo_thank_you(context.bot, user_id)
             return 
             
@@ -7180,6 +7285,16 @@ async def download_button_handler(update: Update, context: ContextTypes.DEFAULT_
                 logger.error(f"Timer status msg failed: {e}")
             
             # Thank you + promo channels
+            # Track all download-session messages for bulk clean on promo timeout
+            try:
+                for _mid in (file_msg_ids or []):
+                    track_dm_msg(user_id, _mid)
+                if msg_to_delete_id:
+                    track_dm_msg(user_id, msg_to_delete_id)
+                if locals().get("timer_msg") is not None:
+                    track_dm_msg(user_id, timer_msg.message_id)
+            except Exception as _te:
+                logger.debug(f"track before promo: {_te}")
             await send_promo_thank_you(context.bot, user_id)
             return
         
