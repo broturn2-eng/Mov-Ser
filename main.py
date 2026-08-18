@@ -3693,7 +3693,8 @@ async def set_msg_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("📥 Download Flow Messages", callback_data="msg_menu_dl")],
             [InlineKeyboardButton("✍️ Post Generator Messages", callback_data="msg_menu_postgen")],
             [InlineKeyboardButton("👑 Admin Flow Messages", callback_data="msg_menu_admin")],
-            [InlineKeyboardButton("⚙️ General Messages", callback_data="msg_menu_gen")],
+            [InlineKeyboardButton("⚙️ General / Request Messages", callback_data="msg_menu_gen")],
+            [InlineKeyboardButton("📋 All Other Messages", callback_data="msg_menu_other")],
             [InlineKeyboardButton("⬅️ Back to Admin Menu", callback_data="admin_menu")]
         ]
         text = await format_message(context, "admin_menu_messages_main")
@@ -5646,8 +5647,9 @@ async def bot_messages_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("📥 Download Flow Messages", callback_data="msg_menu_dl")],
         [InlineKeyboardButton("✍️ Post Generator Messages", callback_data="msg_menu_postgen")],
-        [InlineKeyboardButton("👑 Admin Flow Messages", callback_data="msg_menu_admin")], # NAYA
-        [InlineKeyboardButton("⚙️ General Messages", callback_data="msg_menu_gen")],
+        [InlineKeyboardButton("👑 Admin Flow Messages", callback_data="msg_menu_admin")],
+        [InlineKeyboardButton("⚙️ General / Request Messages", callback_data="msg_menu_gen")],
+        [InlineKeyboardButton("📋 All Other Messages", callback_data="msg_menu_other")],
         [InlineKeyboardButton("⬅️ Back to Admin Menu", callback_data="admin_menu")]
     ]
     text = await format_message(context, "admin_menu_messages_main")
@@ -5695,6 +5697,13 @@ async def bot_messages_menu_gen(update: Update, context: ContextTypes.DEFAULT_TY
         [InlineKeyboardButton("Edit Request Prompt", callback_data="msg_edit_user_request_prompt")],
         [InlineKeyboardButton("Edit Request Received", callback_data="msg_edit_user_request_received")],
         [InlineKeyboardButton("Edit Request Admin Notify", callback_data="msg_edit_user_request_admin_notify")],
+        [InlineKeyboardButton("Edit Request Cancelled", callback_data="msg_edit_user_request_cancelled")],
+        [InlineKeyboardButton("📩 Developer Reply Prefix", callback_data="msg_edit_request_dev_reply_prefix")],
+        [InlineKeyboardButton("Edit Request Start (alt)", callback_data="msg_edit_request_start")],
+        [InlineKeyboardButton("Edit Request Received (alt)", callback_data="msg_edit_request_received")],
+        [InlineKeyboardButton("Edit Request Limit (alt)", callback_data="msg_edit_request_limit_reached")],
+        [InlineKeyboardButton("Edit Request Cancelled (alt)", callback_data="msg_edit_request_cancelled")],
+        [InlineKeyboardButton("Edit Request Admin Notify (alt)", callback_data="msg_edit_request_admin_notify")],
         [InlineKeyboardButton("⬅️ Back", callback_data="admin_menu_messages")]
     ]
     text = await format_message(context, "admin_menu_messages_gen")
@@ -5713,6 +5722,46 @@ async def bot_messages_menu_postgen(update: Update, context: ContextTypes.DEFAUL
     text = await format_message(context, "admin_menu_messages_postgen")
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
     return M_MENU_POSTGEN
+
+async def bot_messages_menu_other(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Saare remaining keys jo DL/Gen/PostGen/Admin lists mein nahi"""
+    query = update.callback_query
+    await query.answer()
+    defaults = await get_default_messages()
+    already = {
+        # dl
+        "user_dl_dm_alert", "user_dl_fetching", "user_dl_anime_not_found", "user_dl_seasons_not_found",
+        "user_dl_episodes_not_found", "user_dl_sending_files", "user_dl_select_season", "user_dl_select_episode",
+        "file_warning", "user_dl_file_error", "user_dl_blocked_error", "user_dl_general_error",
+        # gen
+        "user_menu_greeting", "user_donate_qr_error", "user_donate_qr_text", "donate_thanks",
+        "user_not_admin", "user_welcome_admin", "user_welcome_basic",
+        "user_request_limit", "user_request_prompt", "user_request_received", "user_request_admin_notify",
+        "user_request_cancelled", "request_dev_reply_prefix", "request_start", "request_received",
+        "request_limit_reached", "request_cancelled", "request_admin_notify",
+        # postgen
+        "post_gen_anime_caption", "post_gen_season_caption", "post_gen_episode_caption",
+    }
+    other_keys = sorted([
+        k for k in defaults.keys()
+        if k not in already and not k.startswith("admin_")
+    ])
+    # also include promo-related labels as virtual if in config only
+    buttons = []
+    for k in other_keys:
+        label = k.replace("_", " ").title()
+        if len(label) > 40:
+            label = label[:37] + "..."
+        buttons.append(InlineKeyboardButton(label, callback_data=f"msg_edit_{k}"))
+    keyboard = build_grid_keyboard(buttons, 1) if buttons else []
+    keyboard.append([InlineKeyboardButton("⬅️ Back", callback_data="admin_menu_messages")])
+    text = (
+        "📋 <b>All Other Messages</b>\n\n"
+        "Ye keys pehle menus mein nahi the — ab yahan edit kar sakte ho.\n"
+        f"Total: <b>{len(other_keys)}</b>"
+    )
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+    return M_MENU_GEN  # reuse gen state for msg_edit_
 
 # NAYA: Admin Messages Menu
 async def bot_messages_menu_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -6757,24 +6806,29 @@ async def admin_reply_to_request(update: Update, context: ContextTypes.DEFAULT_T
     
     reply_text = update.message.text or update.message.caption or ""
     try:
+        try:
+            prefix_msg = await format_message(context, "request_dev_reply_prefix", {"reply": reply_text or ""})
+            prefix_msg = safe_html_message(prefix_msg or "")
+        except Exception:
+            prefix_msg = f"📩 <b>Developer Reply:</b>\n\n{reply_text}" if reply_text else "📩 <b>Developer Reply</b>"
         if update.message.photo:
             await context.bot.send_photo(
                 chat_id=target_user,
                 photo=update.message.photo[-1].file_id,
-                caption=f"💬 <b>Developer reply:</b>\n\n{reply_text}" if reply_text else "💬 Developer sent a photo.",
+                caption=prefix_msg if reply_text else "📩 Developer sent a photo.",
                 parse_mode=ParseMode.HTML
             )
         elif update.message.video:
             await context.bot.send_video(
                 chat_id=target_user,
                 video=update.message.video.file_id,
-                caption=f"💬 <b>Developer reply:</b>\n\n{reply_text}" if reply_text else "",
+                caption=prefix_msg if reply_text else "📩 Developer sent a video.",
                 parse_mode=ParseMode.HTML
             )
         else:
             await context.bot.send_message(
                 chat_id=target_user,
-                text=f"💬 <b>Developer reply:</b>\n\n{reply_text}",
+                text=prefix_msg,
                 parse_mode=ParseMode.HTML
             )
         await update.message.reply_text("✅ Reply sent to user.")
@@ -8090,7 +8144,9 @@ def main():
             CallbackQueryHandler(bot_messages_menu_dl, pattern="^msg_menu_dl$"),
             CallbackQueryHandler(bot_messages_menu_postgen, pattern="^msg_menu_postgen$"),
             CallbackQueryHandler(bot_messages_menu_gen, pattern="^msg_menu_gen$"),
+                CallbackQueryHandler(bot_messages_menu_other, pattern="^msg_menu_other$"),
             CallbackQueryHandler(bot_messages_menu_admin, pattern="^msg_menu_admin$"),
+            CallbackQueryHandler(bot_messages_menu_other, pattern="^msg_menu_other$"),
             CallbackQueryHandler(set_msg_start, pattern="^msg_edit_"),
         ],
         states={
@@ -8098,6 +8154,7 @@ def main():
                 CallbackQueryHandler(bot_messages_menu_dl, pattern="^msg_menu_dl$"),
                 CallbackQueryHandler(bot_messages_menu_postgen, pattern="^msg_menu_postgen$"),
                 CallbackQueryHandler(bot_messages_menu_gen, pattern="^msg_menu_gen$"),
+                CallbackQueryHandler(bot_messages_menu_other, pattern="^msg_menu_other$"),
                 CallbackQueryHandler(bot_messages_menu_admin, pattern="^msg_menu_admin$"),
             ],
             M_MENU_DL: [
@@ -8122,6 +8179,7 @@ def main():
                 CallbackQueryHandler(bot_messages_menu, pattern="^admin_menu_messages$"),
                 CallbackQueryHandler(bot_messages_menu_dl, pattern="^msg_menu_dl$"),
                 CallbackQueryHandler(bot_messages_menu_gen, pattern="^msg_menu_gen$"),
+                CallbackQueryHandler(bot_messages_menu_other, pattern="^msg_menu_other$"),
                 CallbackQueryHandler(bot_messages_menu_admin, pattern="^msg_menu_admin$"),
                 CallbackQueryHandler(bot_messages_menu_postgen, pattern="^msg_menu_postgen$"),
             ],
