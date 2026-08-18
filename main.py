@@ -1370,7 +1370,7 @@ async def _update_anime_timestamp(anime_name: str):
 (DS_GET_ANIME, DS_GET_SEASON, DS_CONFIRM) = range(31, 34) 
 (DE_GET_ANIME, DE_GET_SEASON, DE_GET_EPISODE, DE_CONFIRM) = range(34, 38) 
 (M_GET_DONATE_THANKS, M_GET_FILE_WARNING) = range(40, 42) 
-(CS_GET_DELETE_TIME,) = range(45, 46) 
+(CS_GET_DELETE_TIME, CS_GET_PROMO_DELETE, CS_GET_PREVIEW_DELETE) = range(45, 48) 
 (UP_GET_ANIME, UP_GET_TARGET, UP_GET_POSTER) = range(48, 51) 
 (CA_GET_ID, CA_CONFIRM) = range(51, 53) 
 (CR_GET_ID, CR_CONFIRM) = range(53, 55) 
@@ -3142,29 +3142,32 @@ async def set_admin_preview_delete_start(update: Update, context: ContextTypes.D
     await query.edit_message_text(
         f"👑 <b>Admin Preview Auto-Delete</b>\n\n"
         f"Abhi: <b>{current} seconds</b>\n\n"
-        f"Naya time <b>seconds</b> mein bhejo (min 5).\n\n/cancel - Cancel",
+        f"Naya time <b>seconds</b> mein bhejo (min 5).\n"
+        f"Example: <code>30</code>\n\n/cancel - Cancel",
         parse_mode=ParseMode.HTML,
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="admin_menu_auto_delete")]])
     )
-    context.user_data["awaiting_preview_delete"] = True
-    return
+    return CS_GET_PREVIEW_DELETE
 
 async def handle_preview_delete_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.user_data.get("awaiting_preview_delete"):
-        return
     try:
         secs = int(update.message.text.strip())
         if secs < 5:
-            await update.message.reply_text("Minimum 5 seconds.")
-            return
+            await update.message.reply_text("Minimum 5 seconds. Dobara bhejo.")
+            return CS_GET_PREVIEW_DELETE
         config_collection.update_one({"_id": "bot_config"}, {"$set": {"admin_preview_delete_seconds": secs}}, upsert=True)
-        context.user_data.pop("awaiting_preview_delete", None)
-        await update.message.reply_text(f"✅ Admin Preview delete time set to <b>{secs}s</b>.", parse_mode=ParseMode.HTML)
+        await update.message.reply_text(
+            f"✅ Admin Preview delete time set to <b>{secs}s</b>.",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Auto-Delete Menu", callback_data="admin_menu_auto_delete")]])
+        )
+        return ConversationHandler.END
     except ValueError:
         await update.message.reply_text("Sirf number bhejo (seconds).")
+        return CS_GET_PREVIEW_DELETE
 
 async def set_promo_delete_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Promo (thank you) message auto-delete timer"""
+    """Promo (thank you) message auto-delete timer — conversation state"""
     query = update.callback_query
     await query.answer()
     config = await get_config()
@@ -3172,34 +3175,35 @@ async def set_promo_delete_start(update: Update, context: ContextTypes.DEFAULT_T
     await query.edit_message_text(
         f"📢 <b>Promo Message Auto-Delete</b>\n\n"
         f"Abhi: <b>{current} seconds</b> ({current // 60}m {current % 60}s)\n\n"
-        f"Naya time <b>seconds</b> mein bhejo (min 10).\n\n/cancel - Cancel",
+        f"Naya time <b>seconds</b> mein bhejo (min 10).\n"
+        f"Example: <code>180</code> = 3 min\n\n/cancel - Cancel",
         parse_mode=ParseMode.HTML,
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="admin_menu_auto_delete")]])
     )
-    context.user_data["awaiting_promo_delete"] = True
-    return
+    return CS_GET_PROMO_DELETE
 
 async def handle_promo_delete_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.user_data.get("awaiting_promo_delete"):
-        return
+    """Save promo delete seconds from conversation"""
     try:
         secs = int(update.message.text.strip())
         if secs < 10:
-            await update.message.reply_text("Minimum 10 seconds.")
-            return
+            await update.message.reply_text("Minimum 10 seconds. Dobara bhejo.")
+            return CS_GET_PROMO_DELETE
         config_collection.update_one(
             {"_id": "bot_config"},
             {"$set": {"promo_thank_you_delete_seconds": secs}},
             upsert=True
         )
-        context.user_data.pop("awaiting_promo_delete", None)
         m, s = divmod(secs, 60)
         await update.message.reply_text(
-            f"✅ Promo delete time set to <b>{secs}s</b> ({m}m {s}s).",
-            parse_mode=ParseMode.HTML
+            f"✅ <b>Promo delete time set!</b>\n<code>{secs}s</code> ({m}m {s}s)",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Auto-Delete Menu", callback_data="admin_menu_auto_delete")]])
         )
+        return ConversationHandler.END
     except ValueError:
-        await update.message.reply_text("Sirf number bhejo (seconds).")
+        await update.message.reply_text("Sirf number bhejo (seconds). Example: <code>120</code>", parse_mode=ParseMode.HTML)
+        return CS_GET_PROMO_DELETE
 
 async def auto_delete_settings_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """All auto-delete timers in one place"""
@@ -7685,8 +7689,16 @@ def main():
     )
     
     set_delete_time_conv = ConversationHandler(
-        entry_points=[CallbackQueryHandler(set_delete_time_start, pattern="^admin_set_delete_time$")],
-        states={CS_GET_DELETE_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_delete_time_save)]},
+        entry_points=[
+            CallbackQueryHandler(set_delete_time_start, pattern="^admin_set_delete_time$"),
+            CallbackQueryHandler(set_promo_delete_start, pattern="^admin_set_promo_delete$"),
+            CallbackQueryHandler(set_admin_preview_delete_start, pattern="^admin_set_preview_delete$"),
+        ],
+        states={
+            CS_GET_DELETE_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_delete_time_save)],
+            CS_GET_PROMO_DELETE: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_promo_delete_save)],
+            CS_GET_PREVIEW_DELETE: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_preview_delete_save)],
+        },
         fallbacks=global_fallbacks + admin_menu_fallback, 
         allow_reentry=True 
     )
@@ -7850,10 +7862,8 @@ def main():
     bot_app.add_handler(custom_post_conv)
     bot_app.add_handler(broadcast_conv) # NAYA v34
     bot_app.add_handler(CallbackQueryHandler(auto_delete_settings_menu, pattern="^admin_menu_auto_delete$"))
-    bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_preview_delete_save), group=5)
-    bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_promo_delete_save), group=5)
-    bot_app.add_handler(CallbackQueryHandler(set_admin_preview_delete_start, pattern="^admin_set_preview_delete$"))
-    bot_app.add_handler(CallbackQueryHandler(set_promo_delete_start, pattern="^admin_set_promo_delete$"))
+    # Promo + Preview delete timers ab set_delete_time_conv ke andar handle hote hain
+
     bot_app.add_handler(set_delete_time_conv) 
     bot_app.add_handler(set_messages_conv) 
     bot_app.add_handler(appearance_conv)
