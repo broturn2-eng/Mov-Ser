@@ -342,6 +342,7 @@ COLORABLE_BUTTONS = {
         ("post_btn_donate", "❤️ Post · Donate"),
         ("post_btn_request", "🎬 Post · Request a Movie"),
         ("post_btn_download", "⬇️ Post · DOWNLOAD"),
+        ("new_post_dl_btn", "⬇️ New Post Notify · DOWNLOAD"),
         ("post_preview_publish", "🚀 Post · Publish"),
         ("post_preview_edit", "✏️ Post · Edit"),
         ("post_preview_cancel", "❌ Post · Cancel"),
@@ -1642,28 +1643,55 @@ async def get_new_post_notify_text(title: str = "New content") -> str:
     try:
         cfg = config_collection.find_one({"_id": "bot_config"}) or {}
         msgs = cfg.get("messages") or {}
-        # Prefer edited template; fall back to saved original then hardcoded
         tpl = (msgs.get("new_post_notify")
                or cfg.get("new_post_notify")
                or msgs.get("new_post_notify_saved")
                or cfg.get("new_post_notify_saved")
                or DEFAULT_NEW_POST_NOTIFY)
+        safe_title = str(title or "New content").replace("<", "").replace(">", "")
         try:
-            return tpl.format(title=title or "New content")
+            return tpl.format(title=safe_title)
         except Exception:
-            return tpl.replace("{title}", str(title or "New content"))
+            return tpl.replace("{title}", safe_title)
     except Exception:
         return DEFAULT_NEW_POST_NOTIFY.format(title=title or "New content")
 
-async def notify_all_users_new_post(bot, title: str = "New content"):
-    """Background: sab users ko new post message. Auto-delete after ephemeral timer."""
+def build_new_post_notify_keyboard(cfg, download_url: str = None):
+    """Download button for New Post notify — colour via Button Colors key new_post_dl_btn."""
+    try:
+        links = cfg.get("links") or {}
+        # Priority: this-post short link → admin new_post_download_url → links.download → channel/backup
+        url = (download_url
+               or cfg.get("new_post_download_url")
+               or links.get("download")
+               or links.get("channel")
+               or links.get("backup")
+               or "")
+        if not url or not str(url).startswith(("http://", "https://", "tg://")):
+            return None
+        btn_text = (cfg.get("new_post_dl_btn_text")
+                    or cfg.get("btn_text_download")
+                    or "⬇️ DOWNLOAD")
+        return InlineKeyboardMarkup([[
+            btn(btn_text, url=str(url), key="new_post_dl_btn")
+        ]])
+    except Exception as e:
+        logger.debug(f"build_new_post_notify_keyboard: {e}")
+        return None
+
+async def notify_all_users_new_post(bot, title: str = "New content", download_url: str = None):
+    """Background: sab users ko new post + optional Download button. Title = post ka edited title."""
     try:
         cfg = config_collection.find_one({"_id": "bot_config"}) or {}
         if cfg.get("new_post_notify_enabled", True) is False:
             logger.info("new_post_notify disabled — skip")
             return
         text = await get_new_post_notify_text(title)
-        text = safe_html_message(text) if "safe_html_message" in globals() else text
+        try:
+            text = safe_html_message(text)
+        except Exception:
+            pass
+        keyboard = build_new_post_notify_keyboard(cfg, download_url=download_url)
         eph = int(cfg["ephemeral_delete_seconds"]) if cfg.get("ephemeral_delete_seconds") is not None else 1800
         users = users_collection.find({}, {"_id": 1})
         sent = failed = 0
@@ -1672,7 +1700,12 @@ async def notify_all_users_new_post(bot, title: str = "New content"):
             if not uid:
                 continue
             try:
-                msg = await bot.send_message(chat_id=uid, text=text, parse_mode=ParseMode.HTML)
+                msg = await bot.send_message(
+                    chat_id=uid,
+                    text=text,
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=keyboard
+                )
                 sent += 1
                 try:
                     track_dm_msg(uid, msg.message_id, bot=bot)
@@ -1830,7 +1863,7 @@ async def _update_anime_timestamp(anime_name: str):
 (DE_GET_ANIME, DE_GET_SEASON, DE_GET_EPISODE, DE_CONFIRM) = range(34, 38) 
 (M_GET_DONATE_THANKS, M_GET_FILE_WARNING) = range(40, 42) 
 (CS_GET_DELETE_TIME, CS_GET_PROMO_DELETE, CS_GET_PREVIEW_DELETE, CS_GET_CLEAR_REMINDER) = range(45, 49)
-CS_GET_EPHEMERAL, CS_GET_NEW_POST_MSG = 910, 911 
+CS_GET_EPHEMERAL, CS_GET_NEW_POST_MSG, CS_GET_NEW_POST_DL, CS_GET_NEW_POST_DL_TEXT = 910, 911, 912, 913 
 (UP_GET_ANIME, UP_GET_TARGET, UP_GET_POSTER) = range(48, 51) 
 (CA_GET_ID, CA_CONFIRM) = range(51, 53) 
 (CR_GET_ID, CR_CONFIRM) = range(53, 55) 
@@ -3937,6 +3970,94 @@ async def set_ephemeral_save(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text("Invalid number. Sirf seconds (jaise 1800).")
         return CS_GET_EPHEMERAL
 
+
+async def set_new_post_dl_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    cfg = await get_config()
+    cur = cfg.get("new_post_download_url") or (cfg.get("links") or {}).get("download") or "Not set"
+    text = (
+        "🔗 <b>New Post Notify — Download Link</b>\n\n"
+        "Yeh link New Post message ke <b>DOWNLOAD</b> button pe lagega\n"
+        "(agar us post ka short link nahi mila to).\n\n"
+        f"Current: <code>{cur}</code>\n\n"
+        "Naya URL bhejo (https://...)\n"
+        "/clear_dl - link hatao\n"
+        "/cancel - Cancel"
+    )
+    await query.edit_message_text(
+        text, parse_mode=ParseMode.HTML,
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="admin_menu_auto_delete")]])
+    )
+    return CS_GET_NEW_POST_DL
+
+
+async def set_new_post_dl_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    t = (update.message.text or "").strip()
+    if t.lower() in ("/clear_dl", "clear", "none", "off"):
+        config_collection.update_one({"_id": "bot_config"}, {"$unset": {"new_post_download_url": ""}}, upsert=True)
+        try:
+            _invalidate_config_cache()
+        except Exception:
+            pass
+        await update.message.reply_text(
+            "✅ New Post download link clear.",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Auto-Delete Menu", callback_data="admin_menu_auto_delete")]])
+        )
+        return ConversationHandler.END
+    if not t.startswith(("http://", "https://", "tg://")):
+        await update.message.reply_text("Valid link bhejo (https://...)")
+        return CS_GET_NEW_POST_DL
+    config_collection.update_one({"_id": "bot_config"}, {"$set": {"new_post_download_url": t}}, upsert=True)
+    try:
+        _invalidate_config_cache()
+    except Exception:
+        pass
+    await update.message.reply_text(
+        f"✅ New Post download link set:\n<code>{t}</code>",
+        parse_mode=ParseMode.HTML,
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Auto-Delete Menu", callback_data="admin_menu_auto_delete")]])
+    )
+    return ConversationHandler.END
+
+
+async def set_new_post_dl_text_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    cfg = await get_config()
+    cur = cfg.get("new_post_dl_btn_text") or cfg.get("btn_text_download") or "⬇️ DOWNLOAD"
+    text = (
+        "✏️ <b>New Post Download Button Text</b>\n\n"
+        f"Current: <b>{cur}</b>\n\n"
+        "Naya button text bhejo.\n"
+        "Example: ⬇️ DOWNLOAD / Visit Channel\n"
+        "/cancel - Cancel"
+    )
+    await query.edit_message_text(
+        text, parse_mode=ParseMode.HTML,
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="admin_menu_auto_delete")]])
+    )
+    return CS_GET_NEW_POST_DL_TEXT
+
+
+async def set_new_post_dl_text_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    t = (update.message.text or "").strip()
+    if not t:
+        await update.message.reply_text("Text khali nahi ho sakta.")
+        return CS_GET_NEW_POST_DL_TEXT
+    config_collection.update_one({"_id": "bot_config"}, {"$set": {"new_post_dl_btn_text": t}}, upsert=True)
+    try:
+        _invalidate_config_cache()
+    except Exception:
+        pass
+    await update.message.reply_text(
+        f"✅ Button text: <b>{t}</b>",
+        parse_mode=ParseMode.HTML,
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Auto-Delete Menu", callback_data="admin_menu_auto_delete")]])
+    )
+    return ConversationHandler.END
+
+
 async def toggle_new_post_notify(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -4042,6 +4163,8 @@ async def auto_delete_settings_menu(update: Update, context: ContextTypes.DEFAUL
         [InlineKeyboardButton(f"💬 Menu/Notify Delete ({'OFF' if eph_secs <= 0 else _fmt(eph_secs)})", callback_data="admin_set_ephemeral")],
         [InlineKeyboardButton(f"🆕 New Post Notify: {'ON' if notify_on else 'OFF'}", callback_data="admin_toggle_new_post_notify")],
         [InlineKeyboardButton("✏️ Edit New Post Message", callback_data="admin_edit_new_post_msg")],
+        [InlineKeyboardButton("🔗 New Post Download Link", callback_data="admin_set_new_post_dl")],
+        [InlineKeyboardButton("✏️ New Post DL Button Text", callback_data="admin_set_new_post_dl_text")],
         [InlineKeyboardButton(f"🧹 Clear Chat Reminder ({'OFF' if remind_hrs <= 0 else str(remind_hrs)+'h'})", callback_data="admin_set_clear_reminder")],
         [InlineKeyboardButton("⬅️ Back to Admin Menu", callback_data="admin_menu")],
     ]
@@ -4867,10 +4990,17 @@ async def post_preview_publish(update: Update, context: ContextTypes.DEFAULT_TYP
             logger.warning(f"admin DM clear schedule: {e}")
         # Auto notify all users about new post (background)
         try:
-            title = (context.user_data.get("anime_name")
-                     or context.user_data.get("post_edit_title")
-                     or "New content")
-            asyncio.create_task(notify_all_users_new_post(context.bot, title=title))
+            # Post ke saath jo edited title gaya — wahi notify mein
+            title = (
+                context.user_data.get("post_edit_title")
+                or context.user_data.get("anime_name")
+                or "New content"
+            )
+            # Prefer short link of this post; else admin new_post_download_url / links.download
+            dl_url = context.user_data.get("short_link_url") or None
+            asyncio.create_task(notify_all_users_new_post(
+                context.bot, title=str(title).strip(), download_url=dl_url
+            ))
         except Exception as e:
             logger.warning(f"new post notify schedule: {e}")
     except Exception as e:
@@ -9154,6 +9284,20 @@ def main():
     bot_app.add_handler(CallbackQueryHandler(back_to_admin_menu, pattern="^admin_menu$"))
     bot_app.add_handler(CallbackQueryHandler(clear_chats_callback, pattern="^user_clear_chats$"))
     bot_app.add_handler(CallbackQueryHandler(toggle_new_post_notify, pattern="^admin_toggle_new_post_notify$"))
+    new_post_dl_conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(set_new_post_dl_start, pattern="^admin_set_new_post_dl$")],
+        states={CS_GET_NEW_POST_DL: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_new_post_dl_save)]},
+        fallbacks=[CommandHandler("cancel", cancel), CommandHandler("clear_dl", set_new_post_dl_save), CallbackQueryHandler(auto_delete_settings_menu, pattern="^admin_menu_auto_delete$")],
+        allow_reentry=True,
+    )
+    bot_app.add_handler(new_post_dl_conv)
+    new_post_dl_text_conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(set_new_post_dl_text_start, pattern="^admin_set_new_post_dl_text$")],
+        states={CS_GET_NEW_POST_DL_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_new_post_dl_text_save)]},
+        fallbacks=[CommandHandler("cancel", cancel), CallbackQueryHandler(auto_delete_settings_menu, pattern="^admin_menu_auto_delete$")],
+        allow_reentry=True,
+    )
+    bot_app.add_handler(new_post_dl_text_conv)
     bot_app.add_handler(CallbackQueryHandler(admin_clear_chat_menu, pattern="^admin_clear_chat_menu$"))
     ephemeral_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(set_ephemeral_start, pattern="^admin_set_ephemeral$")],
