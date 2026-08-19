@@ -287,6 +287,61 @@ COLORABLE_BUTTONS = {
         ("chats_replied", "✅ Chats · Replied"),
         ("chats_ban_start", "🚫 Chats · Ban User"),
     ],
+    "admin_set": [
+        ("admin_add_co_admin", "➕ Add Co-Admin"),
+        ("admin_remove_co_admin", "🚫 Remove Co-Admin"),
+        ("admin_list_co_admin", "👥 List Co-Admins"),
+        ("admin_set_default_chat", "📍 Default Publish Chat"),
+        ("admin_promo_channels", "📢 Promo Channels"),
+        ("admin_post_buttons", "🔘 Post Buttons Text"),
+        ("admin_btn_layout", "📐 Button Layout"),
+        ("admin_set_language", "🌐 Bot Language"),
+        ("admin_custom_post", "🚀 Custom Post Generator"),
+        ("admin_broadcast_start", "📢 Broadcast Message"),
+        ("admin_clear_chat_menu", "🧹 Clear Chat Request"),
+        ("admin_co_features", "👮 Co-Admin Permissions"),
+        ("admin_set_donate_qr", "❤️ Set Donate QR"),
+        ("admin_set_backup_link", "🔗 Set Backup Link"),
+        ("admin_set_download_link", "🔗 Set Download Link"),
+        ("admin_set_help_link", "🔗 Set Help Link"),
+        ("admin_set_verify_link", "🔗 Set Verify Link"),
+        ("admin_set_request_link", "🔗 Set Request Link"),
+        ("admin_set_delete_time", "⏱️ Set Auto-Delete Time"),
+        ("admin_set_menu_photo", "🖼️ Set User Menu Photo"),
+        ("admin_update_photo_content", "🖼️ Update Series Photo"),
+        ("admin_set_verify_video", "🎥 Set Verify Video"),
+        ("msg_menu_dl", "📥 Msg · Download Flow"),
+        ("msg_menu_postgen", "✍️ Msg · Post Generator"),
+        ("msg_menu_admin", "👑 Msg · Admin Flow"),
+        ("msg_menu_gen", "⚙️ Msg · General / Request"),
+        ("msg_menu_other", "📋 Msg · Other"),
+        ("admin_menu_messages", "⚙ Bot Messages (entry)"),
+        ("back_to_admin_settings", "⬅️ Back Admin Settings"),
+    ],
+    "messages": [
+        ("msg_menu_dl", "📥 Download Flow Messages"),
+        ("msg_menu_postgen", "✍️ Post Generator Messages"),
+        ("msg_menu_admin", "👑 Admin Flow Messages"),
+        ("msg_menu_gen", "⚙️ General / Request Messages"),
+        ("msg_menu_other", "📋 Other Messages"),
+        ("admin_add_anime", "➕ Add Series"),
+        ("admin_add_movie", "🎬 Add Movie"),
+        ("admin_add_season", "➕ Add Season"),
+        ("admin_add_episode", "➕ Add Episode"),
+        ("admin_del_anime", "🗑️ Del Series/Movie"),
+        ("admin_del_season", "🗑️ Del Season"),
+        ("admin_del_episode", "🗑️ Del Episode"),
+        ("admin_edit_anime", "✏️ Edit Series Name"),
+        ("admin_edit_season", "✏️ Edit Season"),
+        ("admin_edit_episode", "✏️ Edit Episode"),
+        ("admin_merge_anime", "🔄 Merge Series"),
+        ("save_anime", "✅ Save Series"),
+        ("save_movie", "✅ Save Movie"),
+        ("save_season", "✅ Save Season"),
+        ("back_to_add_content", "⬅️ Back Add Content"),
+        ("back_to_manage", "⬅️ Back Delete Menu"),
+        ("back_to_edit_menu", "⬅️ Back Edit Menu"),
+    ],
     "post": [
         ("post_btn_backup", "📌 Post · Backup"),
         ("post_btn_verify", "✅ Post · How to Verify"),
@@ -321,8 +376,10 @@ COLORABLE_BUTTONS = {
 }
 
 COLOR_CAT_LABELS = {
-    "admin": "👑 Admin Menu Buttons",
-    "post": "📝 Post Buttons (Download/Verify/Request…)",
+    "admin": "👑 Admin Main Menu",
+    "admin_set": "🛠️ Admin Settings (andar)",
+    "messages": "⚙ Bot Messages / menus",
+    "post": "📝 Post Buttons (Download/Verify…)",
     "user": "👤 User Menu Buttons",
     "dm": "💬 DM / Download / Quality",
 }
@@ -330,17 +387,31 @@ COLOR_CAT_LABELS = {
 STYLE_CYCLE = ["", "primary", "success", "danger"]  # "" = default (app grey)
 STYLE_LABEL = {"": "⚪ Default", "primary": "🔵 Blue", "success": "🟢 Green", "danger": "🔴 Red"}
 
+# In-memory cache — avoid Mongo hit on EVERY button (was making /menu slow)
+_btn_color_cache = {"map": None, "ts": 0.0}
+_co_feat_cache = {"map": None, "ts": 0.0}
+_CACHE_TTL = 30.0  # seconds
+
+def _invalidate_btn_color_cache():
+    _btn_color_cache["map"] = None
+    _btn_color_cache["ts"] = 0.0
+
 def get_btn_color_map_sync():
+    import time as _time
+    now = _time.time()
+    if _btn_color_cache["map"] is not None and (now - _btn_color_cache["ts"]) < _CACHE_TTL:
+        return _btn_color_cache["map"]
     try:
-        cfg = config_collection.find_one({"_id": "bot_config"}) or {}
+        cfg = config_collection.find_one({"_id": "bot_config"}, {"btn_color_map": 1}) or {}
         m = cfg.get("btn_color_map") or {}
-        # only valid styles
-        return {k: v for k, v in m.items() if v in ("primary", "success", "danger")}
+        out = {k: v for k, v in m.items() if v in ("primary", "success", "danger")}
     except Exception:
-        return {}
+        out = {}
+    _btn_color_cache["map"] = out
+    _btn_color_cache["ts"] = now
+    return out
 
 def resolve_btn_style(key=None, style=None):
-    """Explicit style wins; else lookup key in config map."""
     if style in ("primary", "success", "danger"):
         return style
     if key:
@@ -348,17 +419,12 @@ def resolve_btn_style(key=None, style=None):
     return None
 
 def btn(text, callback_data=None, url=None, style=None, key=None, role=None, **kwargs):
-    """Colored InlineKeyboardButton.
-    key= stable id (e.g. callback prefix) used in Bot Appearance → Button Colors
-    style= force primary|success|danger
-    role= ignored legacy (kept for compatibility)
-    """
+    """Colored InlineKeyboardButton (uses cached color map — fast)."""
     kw = dict(kwargs)
     if callback_data is not None:
         kw["callback_data"] = callback_data
     if url is not None:
         kw["url"] = url
-    # key defaults to callback_data base
     if key is None and callback_data:
         key = callback_data
     resolved = resolve_btn_style(key=key, style=style)
@@ -391,14 +457,24 @@ DEFAULT_CO_ADMIN_FEATURES = {
 }
 
 def get_co_admin_features_sync():
+    import time as _time
+    now = _time.time()
+    if _co_feat_cache["map"] is not None and (now - _co_feat_cache["ts"]) < _CACHE_TTL:
+        return _co_feat_cache["map"]
     try:
-        cfg = config_collection.find_one({"_id": "bot_config"}) or {}
+        cfg = config_collection.find_one({"_id": "bot_config"}, {"co_admin_features": 1}) or {}
         feats = dict(DEFAULT_CO_ADMIN_FEATURES)
         saved = cfg.get("co_admin_features") or {}
         feats.update({k: bool(v) for k, v in saved.items() if k in DEFAULT_CO_ADMIN_FEATURES})
-        return feats
     except Exception:
-        return dict(DEFAULT_CO_ADMIN_FEATURES)
+        feats = dict(DEFAULT_CO_ADMIN_FEATURES)
+    _co_feat_cache["map"] = feats
+    _co_feat_cache["ts"] = now
+    return feats
+
+def _invalidate_co_feat_cache():
+    _co_feat_cache["map"] = None
+    _co_feat_cache["ts"] = 0.0
 
 async def co_admin_can(user_id: int, feature: str) -> bool:
     """Main admin always True; co-admin depends on feature flag."""
@@ -2815,11 +2891,11 @@ async def add_content_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     keyboard = [
-        [InlineKeyboardButton("🎬 Add Movie", callback_data="admin_add_movie")],
-        [InlineKeyboardButton("📺 Add Series", callback_data="admin_add_anime")],  # Series = existing anime flow
-        [InlineKeyboardButton("➕ Add Season", callback_data="admin_add_season")],
-        [InlineKeyboardButton("➕ Add Episode", callback_data="admin_add_episode")],
-        [InlineKeyboardButton("⬅️ Back to Admin Menu", callback_data="admin_menu")]
+        [btn("🎬 Add Movie", callback_data="admin_add_movie", key="admin_add_movie")],
+        [btn("📺 Add Series", callback_data="admin_add_anime", key="admin_add_anime")],
+        [btn("➕ Add Season", callback_data="admin_add_season", key="admin_add_season")],
+        [btn("➕ Add Episode", callback_data="admin_add_episode", key="admin_add_episode")],
+        [btn("⬅️ Back to Admin Menu", callback_data="admin_menu", key="admin_menu")],
     ]
     text = await format_message(context, "admin_menu_add_content")
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
@@ -2834,10 +2910,10 @@ async def manage_content_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
     if query: await query.answer()
     
     keyboard = [
-        [InlineKeyboardButton("🗑️ Delete Series/Movie", callback_data="admin_del_anime")],
-        [InlineKeyboardButton("🗑️ Delete Season", callback_data="admin_del_season")],
-        [InlineKeyboardButton("🗑️ Delete Episode", callback_data="admin_del_episode")], 
-        [InlineKeyboardButton("⬅️ Back to Admin Menu", callback_data="admin_menu")]
+        [btn("🗑️ Delete Series/Movie", callback_data="admin_del_anime", key="admin_del_anime")],
+        [btn("🗑️ Delete Season", callback_data="admin_del_season", key="admin_del_season")],
+        [btn("🗑️ Delete Episode", callback_data="admin_del_episode", key="admin_del_episode")],
+        [btn("⬅️ Back to Admin Menu", callback_data="admin_menu", key="admin_menu")],
     ]
     text = await format_message(context, "admin_menu_manage_content")
     
@@ -5852,12 +5928,12 @@ async def bot_messages_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if query: await query.answer()
     
     keyboard = [
-        [InlineKeyboardButton("📥 Download Flow Messages", callback_data="msg_menu_dl")],
-        [InlineKeyboardButton("✍️ Post Generator Messages", callback_data="msg_menu_postgen")],
-        [InlineKeyboardButton("👑 Admin Flow Messages", callback_data="msg_menu_admin")],
-        [InlineKeyboardButton("⚙️ General / Request Messages", callback_data="msg_menu_gen")],
-        [InlineKeyboardButton("📋 All Other Messages", callback_data="msg_menu_other")],
-        [InlineKeyboardButton("⬅️ Back to Admin Menu", callback_data="admin_menu")]
+        [btn("📥 Download Flow Messages", callback_data="msg_menu_dl", key="msg_menu_dl")],
+        [btn("✍️ Post Generator Messages", callback_data="msg_menu_postgen", key="msg_menu_postgen")],
+        [btn("👑 Admin Flow Messages", callback_data="msg_menu_admin", key="msg_menu_admin")],
+        [btn("⚙️ General / Request Messages", callback_data="msg_menu_gen", key="msg_menu_gen")],
+        [btn("📋 All Other Messages", callback_data="msg_menu_other", key="msg_menu_other")],
+        [btn("⬅️ Back to Admin Menu", callback_data="admin_menu", key="admin_menu")],
     ]
     text = await format_message(context, "admin_menu_messages_main")
     
@@ -6297,6 +6373,7 @@ async def btn_colors_set(update: Update, context: ContextTypes.DEFAULT_TYPE):
             {"$unset": {f"btn_color_map.{bid}": ""}},
             upsert=True
         )
+    _invalidate_btn_color_cache()
     # Fast feedback in answer toast
     try:
         await query.answer(STYLE_LABEL.get(nxt, "Default"), show_alert=False)
@@ -6318,6 +6395,7 @@ async def btn_colors_reset_all(update: Update, context: ContextTypes.DEFAULT_TYP
         {"$unset": {"btn_color_map": ""}},
         upsert=True
     )
+    _invalidate_btn_color_cache()
     await btn_colors_menu(update, context)
 
 async def co_features_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -6362,6 +6440,7 @@ async def co_features_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE)
         {"$set": {f"co_admin_features.{key}": new_val}},
         upsert=True
     )
+    _invalidate_co_feat_cache()
     await co_features_menu(update, context)
 
 async def co_features_reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -6374,6 +6453,7 @@ async def co_features_reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
         {"$set": {"co_admin_features": dict(DEFAULT_CO_ADMIN_FEATURES)}},
         upsert=True
     )
+    _invalidate_co_feat_cache()
     await co_features_menu(update, context)
 
 
@@ -6391,18 +6471,18 @@ async def admin_settings_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
     promo1 = config.get("promo_channel_1") or "Not Set"
     promo2 = config.get("promo_channel_2") or "Not Set"
     keyboard = [
-        [InlineKeyboardButton("➕ Add Co-Admin", callback_data="admin_add_co_admin")],
-        [InlineKeyboardButton("🚫 Remove Co-Admin", callback_data="admin_remove_co_admin")],
-        [InlineKeyboardButton("👥 List Co-Admins", callback_data="admin_list_co_admin")],
-        [InlineKeyboardButton(f"📍 Default Publish Chat: {default_chat}", callback_data="admin_set_default_chat")],
-        [InlineKeyboardButton("📢 Promo Channels (Thank You)", callback_data="admin_promo_channels")],
-        [InlineKeyboardButton("🔘 Post Buttons Text", callback_data="admin_post_buttons")],
-        [InlineKeyboardButton("🌐 Bot Language", callback_data="admin_set_language")],
-        [InlineKeyboardButton("🚀 Custom Post Generator", callback_data="admin_custom_post")],
-        [InlineKeyboardButton("📢 Broadcast Message", callback_data="admin_broadcast_start")],
-        [InlineKeyboardButton("🧹 Clear Chat Request", callback_data="admin_clear_chat_menu")],
-        [InlineKeyboardButton("👮 Co-Admin Permissions", callback_data="admin_co_features")],
-        [InlineKeyboardButton("⬅️ Back to Admin Menu", callback_data="admin_menu")]
+        [btn("➕ Add Co-Admin", callback_data="admin_add_co_admin", key="admin_add_co_admin")],
+        [btn("🚫 Remove Co-Admin", callback_data="admin_remove_co_admin", key="admin_remove_co_admin")],
+        [btn("👥 List Co-Admins", callback_data="admin_list_co_admin", key="admin_list_co_admin")],
+        [btn(f"📍 Default Publish Chat: {default_chat}", callback_data="admin_set_default_chat", key="admin_set_default_chat")],
+        [btn("📢 Promo Channels (Thank You)", callback_data="admin_promo_channels", key="admin_promo_channels")],
+        [btn("🔘 Post Buttons Text", callback_data="admin_post_buttons", key="admin_post_buttons")],
+        [btn("🌐 Bot Language", callback_data="admin_set_language", key="admin_set_language")],
+        [btn("🚀 Custom Post Generator", callback_data="admin_custom_post", key="admin_custom_post")],
+        [btn("📢 Broadcast Message", callback_data="admin_broadcast_start", key="admin_broadcast_start")],
+        [btn("🧹 Clear Chat Request", callback_data="admin_clear_chat_menu", key="admin_clear_chat_menu")],
+        [btn("👮 Co-Admin Permissions", callback_data="admin_co_features", key="admin_co_features")],
+        [btn("⬅️ Back to Admin Menu", callback_data="admin_menu", key="admin_menu")],
     ]
     text = await format_message(context, "admin_menu_admin_settings")
     
