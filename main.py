@@ -310,12 +310,6 @@ COLORABLE_BUTTONS = {
         ("admin_set_menu_photo", "🖼️ Set User Menu Photo"),
         ("admin_update_photo_content", "🖼️ Update Series Photo"),
         ("admin_set_verify_video", "🎥 Set Verify Video"),
-        ("msg_menu_dl", "📥 Msg · Download Flow"),
-        ("msg_menu_postgen", "✍️ Msg · Post Generator"),
-        ("msg_menu_admin", "👑 Msg · Admin Flow"),
-        ("msg_menu_gen", "⚙️ Msg · General / Request"),
-        ("msg_menu_other", "📋 Msg · Other"),
-        ("admin_menu_messages", "⚙ Bot Messages (entry)"),
         ("back_to_admin_settings", "⬅️ Back Admin Settings"),
     ],
     "messages": [
@@ -6260,16 +6254,16 @@ async def btn_colors_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, ca
         except Exception:
             pass
         data = query.data or ""
-        if data.startswith("app_btn_colors_cat_"):
-            parts = data.split("_")
-            # app_btn_colors_cat_admin_0
+        # Format: app_btn_colors_cat|{cat}|{page}
+        if data.startswith("app_btn_colors_cat|"):
+            parts = data.split("|")
             try:
-                cat = parts[4]
-                page = int(parts[5]) if len(parts) > 5 else 0
+                cat = parts[1]
+                page = int(parts[2]) if len(parts) > 2 else 0
             except Exception:
-                cat = parts[4] if len(parts) > 4 else None
+                cat = None
                 page = 0
-        elif data == "app_btn_colors" or data.startswith("app_btn_colors_page_"):
+        elif data == "app_btn_colors":
             cat = None
     user_id = update.effective_user.id
     if not await co_admin_can(user_id, "bot_appearance"):
@@ -6277,7 +6271,6 @@ async def btn_colors_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, ca
             await deny_co_admin_feature(update, context, "Button Colors")
             return
 
-    # Category picker (fast)
     if not cat or cat not in COLORABLE_BUTTONS:
         text = (
             "🎨 <b>Button Colors</b>\n\n"
@@ -6287,7 +6280,7 @@ async def btn_colors_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, ca
         keyboard = []
         for cid, label in COLOR_CAT_LABELS.items():
             n = len(COLORABLE_BUTTONS.get(cid, []))
-            keyboard.append([btn(f"{label} ({n})", callback_data=f"app_btn_colors_cat_{cid}_0", key="app_btn_colors")])
+            keyboard.append([btn(f"{label} ({n})", callback_data=f"app_btn_colors_cat|{cid}|0", key="app_btn_colors")])
         keyboard.append([btn("♻️ Reset ALL colours", callback_data="btncolor_reset_all", key="admin_menu")])
         keyboard.append([btn("⬅️ Back to Appearance", callback_data="admin_menu_appearance", key="admin_menu")])
         if query:
@@ -6297,28 +6290,30 @@ async def btn_colors_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, ca
                 pass
         return
 
+    # Force fresh map (no stale cache after colour change)
     cmap = get_btn_color_map_sync()
     items = COLORABLE_BUTTONS[cat]
     per_page = 10
     total = len(items)
-    start = page * per_page
-    chunk = items[start:start + per_page]
+    start_i = page * per_page
+    chunk = items[start_i:start_i + per_page]
     text = (
         f"🎨 <b>{COLOR_CAT_LABELS.get(cat, cat)}</b>\n\n"
-        f"Button dabao → colour change (fast).\n"
-        f"Page {page + 1}/{(max(1, (total + per_page - 1) // per_page))}"
+        f"Button dabao → colour change.\n"
+        f"Page {page + 1}/{max(1, (total + per_page - 1) // per_page)}"
     )
     keyboard = []
     for bid, label in chunk:
-        cur = cmap.get(bid, "")
+        cur = cmap.get(bid, "") or ""
         emoji = STYLE_LABEL.get(cur, "⚪ Default")
         short = label if len(label) < 30 else label[:27] + "…"
-        keyboard.append([btn(f"{short} · {emoji}", callback_data=f"btncolor_set_{cat}_{page}_{bid}", key=bid)])
+        # Format: btncolor_set|{cat}|{page}|{bid}
+        keyboard.append([btn(f"{short} · {emoji}", callback_data=f"btncolor_set|{cat}|{page}|{bid}", key=bid)])
     nav = []
     if page > 0:
-        nav.append(btn("⬅️", callback_data=f"app_btn_colors_cat_{cat}_{page - 1}", key="admin_menu"))
-    if start + per_page < total:
-        nav.append(btn("➡️", callback_data=f"app_btn_colors_cat_{cat}_{page + 1}", key="admin_menu"))
+        nav.append(btn("⬅️", callback_data=f"app_btn_colors_cat|{cat}|{page - 1}", key="admin_menu"))
+    if start_i + per_page < total:
+        nav.append(btn("➡️", callback_data=f"app_btn_colors_cat|{cat}|{page + 1}", key="admin_menu"))
     if nav:
         keyboard.append(nav)
     keyboard.append([btn("📂 Categories", callback_data="app_btn_colors", key="app_btn_colors")])
@@ -6337,13 +6332,17 @@ async def btn_colors_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, ca
 
 async def btn_colors_set(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    # btncolor_set_{cat}_{page}_{bid}
-    data = (query.data or "").replace("btncolor_set_", "", 1)
-    parts = data.split("_", 2)
-    if len(parts) < 3:
+    # Format: btncolor_set|{cat}|{page}|{bid}
+    data = query.data or ""
+    if not data.startswith("btncolor_set|"):
         await query.answer()
         return
-    cat, page_s, bid = parts[0], parts[1], parts[2]
+    parts = data.split("|")
+    # btncolor_set | cat | page | bid
+    if len(parts) < 4:
+        await query.answer()
+        return
+    cat, page_s, bid = parts[1], parts[2], parts[3]
     try:
         page = int(page_s)
     except Exception:
@@ -6356,7 +6355,7 @@ async def btn_colors_set(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer("Unknown button")
         return
     cmap = get_btn_color_map_sync()
-    cur = cmap.get(bid, "")
+    cur = cmap.get(bid, "") or ""
     try:
         nxt = STYLE_CYCLE[(STYLE_CYCLE.index(cur) + 1) % len(STYLE_CYCLE)]
     except ValueError:
@@ -6373,18 +6372,26 @@ async def btn_colors_set(update: Update, context: ContextTypes.DEFAULT_TYPE):
             {"$unset": {f"btn_color_map.{bid}": ""}},
             upsert=True
         )
+    # Update cache immediately so list emoji is correct
     _invalidate_btn_color_cache()
-    # Fast feedback in answer toast
+    # Also patch local cache for instant UI (no wait for Mongo read)
     try:
-        await query.answer(STYLE_LABEL.get(nxt, "Default"), show_alert=False)
+        fresh = dict(get_btn_color_map_sync())
+        if nxt:
+            fresh[bid] = nxt
+        else:
+            fresh.pop(bid, None)
+        _btn_color_cache["map"] = fresh
+        import time as _time
+        _btn_color_cache["ts"] = _time.time()
     except Exception:
         pass
-    # Rebuild only this category page (fast)
-    class _Fake:
+    try:
+        await query.answer(STYLE_LABEL.get(nxt, "⚪ Default"), show_alert=False)
+    except Exception:
         pass
-    # reuse menu with cat/page
     if query:
-        query.data = f"app_btn_colors_cat_{cat}_{page}"
+        query.data = f"app_btn_colors_cat|{cat}|{page}"
     await btn_colors_menu(update, context, cat=cat, page=page)
 
 async def btn_colors_reset_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -8859,7 +8866,7 @@ def main():
     bot_app.add_handler(CallbackQueryHandler(language_menu, pattern="^admin_set_language$"))
     bot_app.add_handler(CallbackQueryHandler(post_buttons_menu, pattern="^admin_post_buttons$"))
     bot_app.add_handler(CallbackQueryHandler(btn_colors_menu, pattern="^app_btn_colors"))
-    bot_app.add_handler(CallbackQueryHandler(btn_colors_set, pattern="^btncolor_set_"))
+    bot_app.add_handler(CallbackQueryHandler(btn_colors_set, pattern="^btncolor_set"))
     bot_app.add_handler(CallbackQueryHandler(btn_colors_reset_all, pattern="^btncolor_reset_all$"))
     bot_app.add_handler(CallbackQueryHandler(co_features_menu, pattern="^admin_co_features$"))
     bot_app.add_handler(CallbackQueryHandler(co_features_toggle, pattern="^cofeat_toggle_"))
