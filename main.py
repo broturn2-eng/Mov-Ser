@@ -1654,7 +1654,7 @@ async def notify_all_users_new_post(bot, title: str = "New content"):
                 msg = await bot.send_message(chat_id=uid, text=text, parse_mode=ParseMode.HTML)
                 sent += 1
                 try:
-                    track_dm_msg(uid, msg.message_id)
+                    track_dm_msg(uid, msg.message_id, bot=bot)
                     if eph > 0:
                         asyncio.create_task(delete_message_later(bot, uid, msg.message_id, eph))
                 except Exception:
@@ -1674,14 +1674,13 @@ def get_ephemeral_seconds_sync() -> int:
         return 1800
 
 async def schedule_ephemeral_delete(bot, chat_id, message_id, seconds=None):
-    """Menu / notify / temporary msgs — auto delete after timer (default 30 min)."""
+    """User-side bot msgs auto-delete. Admin ke messages skip."""
     try:
         if seconds is None:
             seconds = get_ephemeral_seconds_sync()
         if seconds <= 0 or not message_id:
             return
-        track_dm_msg(chat_id, message_id)
-        asyncio.create_task(delete_message_later(bot, chat_id, message_id, seconds))
+        track_dm_msg(chat_id, message_id, bot=bot, auto_ephemeral=True)
     except Exception:
         pass
 
@@ -1703,8 +1702,10 @@ async def delete_message_later(bot, chat_id: int, message_id: int, seconds: int)
     except Exception as e:
         logger.warning(f"Message (asyncio.sleep) delete karne me error: {e}")
 
-def track_dm_msg(user_id: int, message_id: int):
-    """Session messages track — baad me bulk clean ke liye"""
+def track_dm_msg(user_id: int, message_id: int, bot=None, auto_ephemeral: bool = True):
+    """Track bot DM msg. If bot given + user is NOT main admin → schedule Menu/Notify auto-delete.
+    Admin panel messages: pass auto_ephemeral=False or user_id==ADMIN_ID (skipped).
+    """
     try:
         if not message_id:
             return
@@ -1714,8 +1715,22 @@ def track_dm_msg(user_id: int, message_id: int):
             {"$addToSet": {"msg_ids": message_id}, "$set": {"updated_at": _dt.utcnow()}},
             upsert=True
         )
+        if not auto_ephemeral or not bot:
+            return
+        try:
+            if int(user_id) == int(ADMIN_ID):
+                return  # admin side mat hatao
+        except Exception:
+            pass
+        sec = get_ephemeral_seconds_sync()
+        if sec and sec > 0:
+            asyncio.create_task(delete_message_later(bot, user_id, message_id, sec))
     except Exception as e:
         logger.debug(f"track_dm_msg: {e}")
+
+def track_and_ephemeral(bot, user_id: int, message_id: int):
+    """Alias: track + ephemeral for users only."""
+    track_dm_msg(user_id, message_id, bot=bot, auto_ephemeral=True)
 
 def mark_user_activity(user_id: int):
     """User ne bot use kiya (download/request) — clear-chat reminder ke liye"""
@@ -3752,7 +3767,7 @@ async def _send_clear_msg_to_user(bot, uid: int) -> bool:
     try:
         markup = InlineKeyboardMarkup([[btn("🧹 Clear Chats", callback_data="user_clear_chats", key="user_clear_chats")]])
         sent = await bot.send_message(chat_id=uid, text=CLEAR_CHAT_MSG, parse_mode=ParseMode.HTML, reply_markup=markup)
-        track_dm_msg(uid, sent.message_id)
+        track_dm_msg(uid, sent.message_id, bot=bot)
         users_collection.update_one(
             {"_id": uid},
             {"$set": {"last_clear_reminder_at": datetime.utcnow()}},
@@ -3980,7 +3995,7 @@ async def auto_delete_settings_menu(update: Update, context: ContextTypes.DEFAUL
         f"🆕 <b>New Post Notify:</b> {'ON ✅' if notify_on else 'OFF 🔒'}\n"
         f"🧹 <b>Clear Chat Reminder:</b> {('OFF' if remind_hrs <= 0 else str(remind_hrs)+'h')}\n\n"
         "Kaunsa timer change karna hai?\n"
-        "<i>Menu/Notify = /user, new post alerts — auto delete (default 30 min).</i>"
+        "<i>Menu/Notify = user ko bot ke SAARI msgs (menu, notify, status) auto-delete. Admin panel skip. Default 30 min.</i>"
     )
     keyboard = [
         [InlineKeyboardButton(f"📁 File Delete Time ({_fmt(file_secs)})", callback_data="admin_set_delete_time")],
@@ -7207,7 +7222,7 @@ async def send_promo_thank_you(bot, user_id: int):
             import re as _re
             plain = _re.sub(r'<[^>]+>', '', full_msg or '')
             sent = await bot.send_message(chat_id=user_id, text=plain, reply_markup=reply_markup)
-        track_dm_msg(user_id, sent.message_id)
+        track_dm_msg(user_id, sent.message_id, bot=context.bot)
         mark_user_activity(user_id)
         # Promo time khatam = SAARA bot DM clean (files + status + promo)
         try:
@@ -7383,7 +7398,7 @@ async def handle_deep_link_request(user: User, context: ContextTypes.DEFAULT_TYP
             parse_mode=ParseMode.HTML,
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📝 Type request below", callback_data="noop")]])
         )
-        track_dm_msg(user.id, sent.message_id)
+        track_dm_msg(user.id, sent.message_id, bot=context.bot)
     except BadRequest as e:
         logger.error(f"request prompt HTML fail: {e}")
         # Last resort: one clean blockquote with stripped inner tags except basic
@@ -7403,7 +7418,7 @@ async def handle_deep_link_request(user: User, context: ContextTypes.DEFAULT_TYP
                 text=plain or "Request a Movie — naam bhejo.",
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📝 Type request below", callback_data="noop")]])
             )
-        track_dm_msg(user.id, sent.message_id)
+        track_dm_msg(user.id, sent.message_id, bot=context.bot)
     context.user_data["awaiting_movie_request"] = True
     context.user_data["request_mode"] = True
 
@@ -7431,7 +7446,7 @@ async def request_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = f"<blockquote>🎬 <b>Request a Movie</b>\n\nApni movie/series ka naam likh ke bhejo.\n\nRemaining: <b>{remaining}/3</b></blockquote>"
     try:
         sent = await update.message.reply_text(text, parse_mode=ParseMode.HTML)
-        track_dm_msg(user.id, sent.message_id)
+        track_dm_msg(user.id, sent.message_id, bot=context.bot)
     except BadRequest as e:
         logger.error(f"request_command HTML fail: {e}")
         import re as _re
@@ -7441,7 +7456,7 @@ async def request_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             sent = await update.message.reply_text(fallback, parse_mode=ParseMode.HTML)
         except Exception:
             sent = await update.message.reply_text(plain or "Request a Movie — naam bhejo.")
-        track_dm_msg(user.id, sent.message_id)
+        track_dm_msg(user.id, sent.message_id, bot=context.bot)
     context.user_data["awaiting_movie_request"] = True
     return REQ_GET_TEXT
 
@@ -8140,12 +8155,13 @@ async def download_button_handler(update: Update, context: ContextTypes.DEFAULT_
             # Thank you + promo channels
             # Track all download-session messages for bulk clean on promo timeout
             try:
+                # Files + file-timer: ONLY track for Clear Chats (delete_seconds handles auto-delete)
                 for _mid in (file_msg_ids or []):
-                    track_dm_msg(user_id, _mid)
+                    track_dm_msg(user_id, _mid, auto_ephemeral=False)
                 if msg_to_delete_id:
-                    track_dm_msg(user_id, msg_to_delete_id)
+                    track_dm_msg(user_id, msg_to_delete_id, bot=context.bot)  # "sending files" status → ephemeral
                 if locals().get("timer_msg") is not None:
-                    track_dm_msg(user_id, timer_msg.message_id)
+                    track_dm_msg(user_id, timer_msg.message_id, auto_ephemeral=False)  # already has delete_time job
             except Exception as _te:
                 logger.debug(f"track before promo: {_te}")
             await send_promo_thank_you(context.bot, user_id)
@@ -8386,12 +8402,13 @@ async def download_button_handler(update: Update, context: ContextTypes.DEFAULT_
             # Thank you + promo channels
             # Track all download-session messages for bulk clean on promo timeout
             try:
+                # Files + file-timer: ONLY track for Clear Chats (delete_seconds handles auto-delete)
                 for _mid in (file_msg_ids or []):
-                    track_dm_msg(user_id, _mid)
+                    track_dm_msg(user_id, _mid, auto_ephemeral=False)
                 if msg_to_delete_id:
-                    track_dm_msg(user_id, msg_to_delete_id)
+                    track_dm_msg(user_id, msg_to_delete_id, bot=context.bot)  # "sending files" status → ephemeral
                 if locals().get("timer_msg") is not None:
-                    track_dm_msg(user_id, timer_msg.message_id)
+                    track_dm_msg(user_id, timer_msg.message_id, auto_ephemeral=False)  # already has delete_time job
             except Exception as _te:
                 logger.debug(f"track before promo: {_te}")
             await send_promo_thank_you(context.bot, user_id)
