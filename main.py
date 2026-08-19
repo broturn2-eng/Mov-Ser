@@ -1275,8 +1275,21 @@ async def get_default_messages():
         "admin_broadcast_error": "❌ <b><f>Broadcast Error!</f></b>\n<f>Error:</f> {e}",
     }
 # --- Config Helper (MAJOR REFACTOR) ---
+# Fast config cache (start/menu lag fix)
+_config_cache = {"data": None, "ts": 0.0}
+_CONFIG_TTL = 15.0  # seconds
+
+def _invalidate_config_cache():
+    _config_cache["data"] = None
+    _config_cache["ts"] = 0.0
+
 async def get_config():
-    """Database se bot config fetch karega"""
+    """Database se bot config fetch karega (short memory cache)."""
+    import time as _time
+    now = _time.time()
+    if _config_cache["data"] is not None and (now - _config_cache["ts"]) < _CONFIG_TTL:
+        return _config_cache["data"]
+
     config = config_collection.find_one({"_id": "bot_config"})
     
     default_messages = await get_default_messages()
@@ -1293,6 +1306,10 @@ async def get_config():
             "default_publish_chat": None
         }
         config_collection.insert_one(default_config)
+        _config_cache["data"] = default_config
+
+        _config_cache["ts"] = __import__("time").time()
+
         return default_config
     
     # --- Compatibility aur Migration ---
@@ -1397,6 +1414,10 @@ async def get_config():
                  config_collection.update_one({"_id": "bot_config"}, {"$rename": {"links.dl_link": "links.download"}})
             else:
                  config_collection.update_one({"_id": "bot_config"}, {"$set": {"links.download": None}})
+
+    _config_cache["data"] = config
+
+    _config_cache["ts"] = __import__("time").time()
 
     return config
 # --- NAYA FIX: 2x2 Grid Helper
@@ -1643,7 +1664,7 @@ async def notify_all_users_new_post(bot, title: str = "New content"):
             return
         text = await get_new_post_notify_text(title)
         text = safe_html_message(text) if "safe_html_message" in globals() else text
-        eph = int(cfg.get("ephemeral_delete_seconds") or 1800)  # default 30 min
+        eph = int(cfg["ephemeral_delete_seconds"]) if cfg.get("ephemeral_delete_seconds") is not None else 1800
         users = users_collection.find({}, {"_id": 1})
         sent = failed = 0
         for u in users:
@@ -1667,9 +1688,12 @@ async def notify_all_users_new_post(bot, title: str = "New content"):
         logger.error(f"notify_all_users_new_post: {e}")
 
 def get_ephemeral_seconds_sync() -> int:
+    """0 = OFF. Missing key → default 1800."""
     try:
         cfg = config_collection.find_one({"_id": "bot_config"}, {"ephemeral_delete_seconds": 1}) or {}
-        return int(cfg.get("ephemeral_delete_seconds") or 1800)
+        if "ephemeral_delete_seconds" not in cfg:
+            return 1800
+        return max(0, int(cfg.get("ephemeral_delete_seconds") or 0))
     except Exception:
         return 1800
 
@@ -1694,9 +1718,11 @@ async def schedule_admin_msg_delete(bot, chat_id, message_id, seconds=60):
         pass
 
 async def delete_message_later(bot, chat_id: int, message_id: int, seconds: int):
-    """asyncio.sleep ka use karke message delete karega"""
+    """asyncio.sleep ka use karke message delete karega. seconds<=0 = skip (OFF)."""
     try:
-        await asyncio.sleep(seconds)
+        if seconds is None or int(seconds) <= 0:
+            return
+        await asyncio.sleep(int(seconds))
         await bot.delete_message(chat_id=chat_id, message_id=message_id)
         logger.info(f"Auto-deleted message {message_id} for user {chat_id} (asyncio.sleep)")
     except Exception as e:
@@ -3865,32 +3891,44 @@ async def set_ephemeral_start(update: Update, context: ContextTypes.DEFAULT_TYPE
     query = update.callback_query
     await query.answer()
     cfg = await get_config()
-    cur = int(cfg.get("ephemeral_delete_seconds") or 1800)
+    raw = cfg.get("ephemeral_delete_seconds")
+    cur = int(raw) if raw is not None else 1800
+    cur_label = "OFF (0)" if cur <= 0 else f"{cur} seconds ({cur // 60} min)"
     text = (
         f"💬 <b>Menu / Notify Auto-Delete</b>\n\n"
-        f"Current: <b>{cur} seconds</b> ({cur // 60} min)\n\n"
-        "Yeh timer /user menu, New Post alerts, aur temporary bot msgs pe lagta hai.\n\n"
-        "Seconds mein number bhejo (min 30).\n"
-        "Example: 120 = 2 min, 1800 = 30 min\n\n"
+        f"Current: <b>{cur_label}</b>\n\n"
+        "User ke temporary bot msgs auto-delete.\n"
+        "Admin panel isse nahi hatenga.\n\n"
+        "<b>0 = OFF</b> (band)\n"
+        "Example: 0 = off, 120 = 2 min, 1800 = 30 min\n\n"
         "/cancel - Cancel"
     )
     await query.edit_message_text(text, parse_mode=ParseMode.HTML,
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="admin_menu_auto_delete")]]))
     return CS_GET_EPHEMERAL
 
+
 async def set_ephemeral_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         sec = int(update.message.text.strip())
-        if sec < 30:
-            await update.message.reply_text("Minimum 30 seconds rakho.")
+        if sec < 0:
+            await update.message.reply_text("0 = OFF, ya positive seconds.")
+            return CS_GET_EPHEMERAL
+        if 0 < sec < 10:
+            await update.message.reply_text("Minimum 10 seconds (ya 0 = OFF).")
             return CS_GET_EPHEMERAL
         config_collection.update_one(
             {"_id": "bot_config"},
             {"$set": {"ephemeral_delete_seconds": sec}},
             upsert=True
         )
+        try:
+            _invalidate_config_cache()
+        except Exception:
+            pass
+        _msg = "✅ Menu/Notify auto-delete: <b>OFF</b>" if sec <= 0 else f"✅ Menu/Notify auto-delete: <b>{sec}s</b> ({sec // 60} min)"
         await update.message.reply_text(
-            f"✅ Menu/Notify auto-delete: <b>{sec}s</b> ({sec // 60} min)",
+            _msg,
             parse_mode=ParseMode.HTML,
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Auto-Delete Menu", callback_data="admin_menu_auto_delete")]])
         )
@@ -3975,7 +4013,7 @@ async def auto_delete_settings_menu(update: Update, context: ContextTypes.DEFAUL
     file_secs = int(config.get("delete_seconds", 300))
     thank_secs = int(config.get("promo_thank_you_delete_seconds") or 120)
     admin_secs = int(config.get("admin_preview_delete_seconds") or 30)
-    eph_secs = int(config.get("ephemeral_delete_seconds") or 1800)
+    eph_secs = int(config["ephemeral_delete_seconds"]) if config.get("ephemeral_delete_seconds") is not None else 1800
     remind_hrs = float(config.get("chat_clear_reminder_hours") if config.get("chat_clear_reminder_hours") is not None else 6)
     notify_on = config.get("new_post_notify_enabled", True)
 
@@ -3991,7 +4029,7 @@ async def auto_delete_settings_menu(update: Update, context: ContextTypes.DEFAUL
         f"📁 <b>File Delete:</b> {_fmt(file_secs)} ({file_secs}s)\n"
         f"📢 <b>Promo Message:</b> {_fmt(thank_secs)} ({thank_secs}s)\n"
         f"👑 <b>Admin Preview Msgs:</b> {_fmt(admin_secs)} ({admin_secs}s)\n"
-        f"💬 <b>Menu / Notify msgs:</b> {_fmt(eph_secs)} ({eph_secs}s)\n"
+        f"💬 <b>Menu / Notify msgs:</b> {('OFF' if eph_secs <= 0 else _fmt(eph_secs) + ' (' + str(eph_secs) + 's)')}\n"
         f"🆕 <b>New Post Notify:</b> {'ON ✅' if notify_on else 'OFF 🔒'}\n"
         f"🧹 <b>Clear Chat Reminder:</b> {('OFF' if remind_hrs <= 0 else str(remind_hrs)+'h')}\n\n"
         "Kaunsa timer change karna hai?\n"
@@ -4001,7 +4039,7 @@ async def auto_delete_settings_menu(update: Update, context: ContextTypes.DEFAUL
         [InlineKeyboardButton(f"📁 File Delete Time ({_fmt(file_secs)})", callback_data="admin_set_delete_time")],
         [InlineKeyboardButton(f"📢 Promo Delete Time ({_fmt(thank_secs)})", callback_data="admin_set_promo_delete")],
         [InlineKeyboardButton(f"👑 Admin Preview Delete ({_fmt(admin_secs)})", callback_data="admin_set_preview_delete")],
-        [InlineKeyboardButton(f"💬 Menu/Notify Delete ({_fmt(eph_secs)})", callback_data="admin_set_ephemeral")],
+        [InlineKeyboardButton(f"💬 Menu/Notify Delete ({'OFF' if eph_secs <= 0 else _fmt(eph_secs)})", callback_data="admin_set_ephemeral")],
         [InlineKeyboardButton(f"🆕 New Post Notify: {'ON' if notify_on else 'OFF'}", callback_data="admin_toggle_new_post_notify")],
         [InlineKeyboardButton("✏️ Edit New Post Message", callback_data="admin_edit_new_post_msg")],
         [InlineKeyboardButton(f"🧹 Clear Chat Reminder ({'OFF' if remind_hrs <= 0 else str(remind_hrs)+'h'})", callback_data="admin_set_clear_reminder")],
@@ -4028,7 +4066,10 @@ async def set_delete_time_start(update: Update, context: ContextTypes.DEFAULT_TY
 async def set_delete_time_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         seconds = int(update.message.text)
-        if seconds <= 10:
+        if seconds < 0:
+                await update.message.reply_text("0 = OFF, ya positive seconds.")
+                return CS_GET_DELETE_TIME
+        if 0 < seconds <= 10:
                 text = await format_message(context, "admin_set_delete_time_low")
                 await update.message.reply_text(text, parse_mode=ParseMode.HTML)
                 return CS_GET_DELETE_TIME
@@ -5404,7 +5445,10 @@ async def set_delete_time_start(update: Update, context: ContextTypes.DEFAULT_TY
 async def set_delete_time_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         seconds = int(update.message.text)
-        if seconds <= 10:
+        if seconds < 0:
+                await update.message.reply_text("0 = OFF, ya positive seconds.")
+                return CS_GET_DELETE_TIME
+        if 0 < seconds <= 10:
                 text = await format_message(context, "admin_set_delete_time_low")
                 await update.message.reply_text(text, parse_mode=ParseMode.HTML)
                 return CS_GET_DELETE_TIME
