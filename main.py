@@ -261,42 +261,122 @@ ITEMS_PER_PAGE = 15  # 3 columns x 5 rows
 
 
 # --- Colored buttons (Bot API 9.4+ / PTB 22.7+) ---
-# style: "primary"=blue, "success"=green, "danger"=red
-# role: "main" | "ok" | "bad"  → reads from Admin Settings → Button Colors
-DEFAULT_BTN_STYLES = {"main": "primary", "ok": "success", "bad": "danger"}
+# style values: None/default | "primary"(blue) | "success"(green) | "danger"(red)
+# Config: btn_color_map = { "callback_or_id": "primary"|"success"|"danger"|"" }
+# Editable from: Bot Appearance → Button Colors (per-button)
 
-def get_btn_styles_sync():
-    """Read button color roles from config (sync, for keyboards)."""
+# Buttons that appear in Admin / User menus (id → label for editor)
+COLORABLE_BUTTONS = [
+    # Admin main panel
+    ("admin_menu_add_content", "➕ Add Content"),
+    ("admin_menu_manage_content", "🗑️ Delete Content"),
+    ("admin_menu_edit_content", "✏️ Edit Content"),
+    ("admin_menu_other_links", "🔗 Other Links"),
+    ("admin_post_gen", "✍️ Post Generator"),
+    ("admin_menu_donate_settings", "❤️ Donation"),
+    ("admin_menu_auto_delete", "⏱️ Auto-Delete Time"),
+    ("admin_menu_update_photo", "🖼️ Photo Settings"),
+    ("admin_gen_link", "🔗 Gen Link"),
+    ("admin_menu_appearance", "🎨 Bot Appearance"),
+    ("admin_show_stats", "📊 User Statistics"),
+    ("admin_menu_messages", "⚙ Bot Messages"),
+    ("admin_menu_admin_settings", "🛠️ Admin Settings"),
+    ("admin_chats_menu", "💬 Chats (Requests)"),
+    ("admin_menu", "⬅️ Back / Admin Menu"),
+    # Chats
+    ("chats_pending", "📩 Requested"),
+    ("chats_replied", "✅ Replied"),
+    ("chats_ban_start", "🚫 Ban User"),
+    # User-ish / common
+    ("user_show_donate_menu", "Donate"),
+    ("user_back_menu", "⬅️ Back to Menu"),
+    ("user_clear_chats", "Clear Chats"),
+    # Post-ish (generic ids for post generator buttons text already separate)
+    ("post_preview_publish", "Publish Post"),
+    ("post_preview_edit", "Edit Post"),
+    ("post_preview_cancel", "Cancel Post"),
+]
+
+STYLE_CYCLE = ["", "primary", "success", "danger"]  # "" = default (app grey)
+STYLE_LABEL = {"": "⚪ Default", "primary": "🔵 Blue", "success": "🟢 Green", "danger": "🔴 Red"}
+
+def get_btn_color_map_sync():
     try:
         cfg = config_collection.find_one({"_id": "bot_config"}) or {}
-        styles = cfg.get("btn_styles") or {}
-        out = dict(DEFAULT_BTN_STYLES)
-        out.update({k: v for k, v in styles.items() if v in ("primary", "success", "danger")})
-        return out
+        m = cfg.get("btn_color_map") or {}
+        # only valid styles
+        return {k: v for k, v in m.items() if v in ("primary", "success", "danger")}
     except Exception:
-        return dict(DEFAULT_BTN_STYLES)
+        return {}
 
-def btn(text, callback_data=None, url=None, style=None, role=None, **kwargs):
-    """InlineKeyboardButton with optional color.
-    style= explicit primary|success|danger
-    role= main|ok|bad  → uses Admin Settings colours
+def resolve_btn_style(key=None, style=None):
+    """Explicit style wins; else lookup key in config map."""
+    if style in ("primary", "success", "danger"):
+        return style
+    if key:
+        return get_btn_color_map_sync().get(key) or None
+    return None
+
+def btn(text, callback_data=None, url=None, style=None, key=None, role=None, **kwargs):
+    """Colored InlineKeyboardButton.
+    key= stable id (e.g. callback prefix) used in Bot Appearance → Button Colors
+    style= force primary|success|danger
+    role= ignored legacy (kept for compatibility)
     """
     kw = dict(kwargs)
     if callback_data is not None:
         kw["callback_data"] = callback_data
     if url is not None:
         kw["url"] = url
-    if style is None and role:
-        styles = get_btn_styles_sync()
-        style = styles.get(role) or DEFAULT_BTN_STYLES.get(role)
-    if style:
+    # key defaults to callback_data base
+    if key is None and callback_data:
+        key = callback_data
+    resolved = resolve_btn_style(key=key, style=style)
+    if resolved:
         try:
-            return InlineKeyboardButton(text, style=style, **kw)
+            return InlineKeyboardButton(text, style=resolved, **kw)
         except TypeError:
             api = kw.pop("api_kwargs", {}) or {}
-            api["style"] = style
+            api["style"] = resolved
             return InlineKeyboardButton(text, api_kwargs=api, **kw)
     return InlineKeyboardButton(text, **kw)
+
+# Co-admin feature flags (Admin Settings → Co-Admin Permissions)
+# True = co-admin CAN use; False = locked (Contact Developer)
+DEFAULT_CO_ADMIN_FEATURES = {
+    "delete_content": True,
+    "edit_content": True,
+    "add_content": True,
+    "post_generator": True,
+    "gen_link": True,
+    "donation": True,
+    "auto_delete": True,
+    "other_links": True,
+    "user_stats": True,
+    "chats": True,
+    "photo_settings": False,
+    "bot_appearance": False,
+    "bot_messages": False,
+    "admin_settings": False,
+}
+
+def get_co_admin_features_sync():
+    try:
+        cfg = config_collection.find_one({"_id": "bot_config"}) or {}
+        feats = dict(DEFAULT_CO_ADMIN_FEATURES)
+        saved = cfg.get("co_admin_features") or {}
+        feats.update({k: bool(v) for k, v in saved.items() if k in DEFAULT_CO_ADMIN_FEATURES})
+        return feats
+    except Exception:
+        return dict(DEFAULT_CO_ADMIN_FEATURES)
+
+async def co_admin_can(user_id: int, feature: str) -> bool:
+    """Main admin always True; co-admin depends on feature flag."""
+    if user_id == ADMIN_ID:
+        return True
+    if not await is_co_admin(user_id):
+        return False
+    return bool(get_co_admin_features_sync().get(feature, False))
 
 
 # Quality keys (short): only 7=720p, 10=1080p (480/4K removed)
@@ -2715,6 +2795,11 @@ async def add_content_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
     
 async def manage_content_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, from_message: bool = False):
+    user_id = update.effective_user.id
+    if not await co_admin_can(user_id, "delete_content"):
+        if await is_co_admin_only(user_id):
+            await deny_co_admin_feature(update, context, "Delete Content")
+            return
     query = update.callback_query
     if query: await query.answer()
     
@@ -5476,9 +5561,10 @@ async def send_broadcast_task(context: ContextTypes.DEFAULT_TYPE, message: Updat
 async def appearance_menu_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = update.effective_user.id
-    if await is_co_admin_only(user_id):
-        await deny_co_admin_feature(update, context, "Bot Appearance")
-        return AP_MENU
+    if not await co_admin_can(user_id, "bot_appearance"):
+        if await is_co_admin_only(user_id):
+            await deny_co_admin_feature(update, context, "Bot Appearance")
+            return AP_MENU
     if query: await query.answer()
     
     config = await get_config()
@@ -5491,7 +5577,8 @@ async def appearance_menu_start(update: Update, context: ContextTypes.DEFAULT_TY
             InlineKeyboardButton(f"🖋️ Font: {font.title()}", callback_data="app_set_font"),
             InlineKeyboardButton(f"✍️ Style: {style.title()}", callback_data="app_set_style")
         ],
-        [InlineKeyboardButton("⬅️ Back to Admin Menu", callback_data="admin_menu")]
+        [btn("🎨 Button Colors", callback_data="app_btn_colors", key="app_btn_colors")],
+        [btn("⬅️ Back to Admin Menu", callback_data="admin_menu", key="admin_menu")],
     ]
     text = await format_message(context, "admin_menu_appearance", {
         "font": font.title(),
@@ -5728,9 +5815,10 @@ async def other_links_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def bot_messages_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = update.effective_user.id
-    if await is_co_admin_only(user_id):
-        await deny_co_admin_feature(update, context, "Bot Messages")
-        return ConversationHandler.END
+    if not await co_admin_can(user_id, "bot_messages"):
+        if await is_co_admin_only(user_id):
+            await deny_co_admin_feature(update, context, "Bot Messages")
+            return ConversationHandler.END
     if query: await query.answer()
     
     keyboard = [
@@ -5877,8 +5965,12 @@ async def bot_messages_menu_admin(update: Update, context: ContextTypes.DEFAULT_
 # ============================================
 async def admin_chats_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    user_id = update.effective_user.id
+    if not await co_admin_can(user_id, "chats"):
+        if await is_co_admin_only(user_id):
+            await deny_co_admin_feature(update, context, "Chats")
+            return
     if query: await query.answer()
-    # Co-admin allowed — can view & reply to requests
     pending = db['movie_requests'].count_documents({"status": "pending"})
     replied = db['movie_requests'].count_documents({"status": "replied"})
     text = (
@@ -5888,10 +5980,10 @@ async def admin_chats_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Choose section:"
     )
     keyboard = [
-        [btn(f"📩 Requested ({pending})", callback_data="chats_pending_0", role="main")],
-        [btn(f"✅ Replied ({replied})", callback_data="chats_replied_0", role="ok")],
-        [btn("🚫 Ban User (3 hours)", callback_data="chats_ban_start", role="bad")],
-        [btn("⬅️ Back", callback_data="admin_menu", role="bad")],
+        [btn(f"📩 Requested ({pending})", callback_data="chats_pending_0", key="chats_pending")],
+        [btn(f"✅ Replied ({replied})", callback_data="chats_replied_0", key="chats_replied")],
+        [btn("🚫 Ban User (3 hours)", callback_data="chats_ban_start", key="chats_ban_start")],
+        [btn("⬅️ Back", callback_data="admin_menu", key="admin_menu")],
     ]
     if query:
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
@@ -6053,85 +6145,180 @@ async def chats_ban_id_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 
-# --- Button Colors (Admin Settings) ---
-STYLE_EMOJI = {"primary": "🔵 Blue", "success": "🟢 Green", "danger": "🔴 Red"}
-ROLE_LABEL = {
-    "main": "Main actions (Add, Edit, Links…)",
-    "ok": "Positive (Post Gen, Chats, Support…)",
-    "bad": "Danger (Delete, Ban, Close, Back…)",
-}
-
-async def btn_colors_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# --- Button Colors (Bot Appearance → per-button) ---
+async def btn_colors_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, page: int = 0):
     query = update.callback_query
-    if query: await query.answer()
+    if query:
+        await query.answer()
+        if query.data.startswith("app_btn_colors_page_"):
+            try:
+                page = int(query.data.split("_")[-1])
+            except Exception:
+                page = 0
     user_id = update.effective_user.id
-    if await is_co_admin_only(user_id):
-        await deny_co_admin_feature(update, context, "Button Colors")
-        return
-    styles = get_btn_styles_sync()
+    if not await co_admin_can(user_id, "bot_appearance"):
+        if await is_co_admin_only(user_id):
+            await deny_co_admin_feature(update, context, "Button Colors")
+            return
+    cmap = get_btn_color_map_sync()
+    per_page = 8
+    total = len(COLORABLE_BUTTONS)
+    start = page * per_page
+    chunk = COLORABLE_BUTTONS[start:start + per_page]
     text = (
         "🎨 <b>Button Colors</b>\n\n"
-        "Telegram allows only 3 colours:\n"
-        "🔵 <b>primary</b> = Blue\n"
-        "🟢 <b>success</b> = Green\n"
-        "🔴 <b>danger</b> = Red\n\n"
-        "<b>Current mapping:</b>\n"
-        f"• Main → {STYLE_EMOJI.get(styles.get('main'), styles.get('main'))}\n"
-        f"• Positive → {STYLE_EMOJI.get(styles.get('ok'), styles.get('ok'))}\n"
-        f"• Danger → {STYLE_EMOJI.get(styles.get('bad'), styles.get('bad'))}\n\n"
-        "Tap a row to cycle colour."
+        "Har button pe dabao → colour cycle:\n"
+        "⚪ Default → 🔵 Blue → 🟢 Green → 🔴 Red → ⚪\n\n"
+        f"Page {page + 1}/{(total + per_page - 1) // per_page}"
     )
-    keyboard = [
-        [btn(f"Main: {STYLE_EMOJI.get(styles.get('main'), '?')}", callback_data="btncolor_cycle_main", role="main")],
-        [btn(f"Positive: {STYLE_EMOJI.get(styles.get('ok'), '?')}", callback_data="btncolor_cycle_ok", role="ok")],
-        [btn(f"Danger: {STYLE_EMOJI.get(styles.get('bad'), '?')}", callback_data="btncolor_cycle_bad", role="bad")],
-        [btn("♻️ Reset defaults", callback_data="btncolor_reset", role="bad")],
-        [btn("⬅️ Back", callback_data="admin_menu_admin_settings", role="bad")],
-    ]
+    keyboard = []
+    for bid, label in chunk:
+        cur = cmap.get(bid, "")
+        emoji = STYLE_LABEL.get(cur, "⚪ Default")
+        short = label if len(label) < 28 else label[:25] + "…"
+        keyboard.append([btn(f"{short} · {emoji}", callback_data=f"btncolor_set_{bid}", key=bid)])
+    nav = []
+    if page > 0:
+        nav.append(btn("⬅️ Prev", callback_data=f"app_btn_colors_page_{page - 1}", key="admin_menu"))
+    if start + per_page < total:
+        nav.append(btn("Next ➡️", callback_data=f"app_btn_colors_page_{page + 1}", key="admin_menu"))
+    if nav:
+        keyboard.append(nav)
+    keyboard.append([btn("♻️ Reset all colours", callback_data="btncolor_reset_all", key="admin_menu")])
+    keyboard.append([btn("⬅️ Back to Appearance", callback_data="admin_menu_appearance", key="admin_menu")])
     if query:
         try:
             await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
         except Exception:
             await context.bot.send_message(query.from_user.id, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
 
-async def btn_colors_cycle(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def btn_colors_set(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    data = query.data  # btncolor_cycle_main / ok / bad
-    role = data.replace("btncolor_cycle_", "")
-    if role not in ("main", "ok", "bad"):
+    bid = query.data.replace("btncolor_set_", "", 1)
+    valid_ids = {x[0] for x in COLORABLE_BUTTONS}
+    if bid not in valid_ids:
         return
-    order = ["primary", "success", "danger"]
-    styles = get_btn_styles_sync()
-    cur = styles.get(role, DEFAULT_BTN_STYLES.get(role, "primary"))
+    cmap = get_btn_color_map_sync()
+    cur = cmap.get(bid, "")
     try:
-        nxt = order[(order.index(cur) + 1) % len(order)]
+        nxt = STYLE_CYCLE[(STYLE_CYCLE.index(cur) + 1) % len(STYLE_CYCLE)]
     except ValueError:
         nxt = "primary"
+    if nxt:
+        config_collection.update_one(
+            {"_id": "bot_config"},
+            {"$set": {f"btn_color_map.{bid}": nxt}},
+            upsert=True
+        )
+    else:
+        config_collection.update_one(
+            {"_id": "bot_config"},
+            {"$unset": {f"btn_color_map.{bid}": ""}},
+            upsert=True
+        )
+    # stay on same page if possible
+    page = 0
+    for i, (x, _) in enumerate(COLORABLE_BUTTONS):
+        if x == bid:
+            page = i // 8
+            break
+    await btn_colors_menu(update, context, page=page)
+
+async def btn_colors_reset_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer("All colours reset")
     config_collection.update_one(
         {"_id": "bot_config"},
-        {"$set": {f"btn_styles.{role}": nxt}},
+        {"$unset": {"btn_color_map": ""}},
         upsert=True
     )
-    await btn_colors_menu(update, context)
+    await btn_colors_menu(update, context, page=0)
 
-async def btn_colors_reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+
+# --- Co-Admin Permissions (feature on/off) ---
+CO_FEATURE_LABELS = {
+    "add_content": "➕ Add Content",
+    "delete_content": "🗑️ Delete Content",
+    "edit_content": "✏️ Edit Content",
+    "post_generator": "✍️ Post Generator",
+    "gen_link": "🔗 Gen Link",
+    "donation": "❤️ Donation",
+    "auto_delete": "⏱️ Auto-Delete Time",
+    "other_links": "🔗 Other Links",
+    "user_stats": "📊 User Statistics",
+    "chats": "💬 Chats (Requests)",
+    "photo_settings": "🖼️ Photo Settings",
+    "bot_appearance": "🎨 Bot Appearance",
+    "bot_messages": "⚙ Bot Messages",
+    "admin_settings": "🛠️ Admin Settings",
+}
+
+async def co_features_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if query: await query.answer()
+    user_id = update.effective_user.id
+    if not await is_main_admin(user_id):
+        await deny_co_admin_feature(update, context, "Co-Admin Permissions")
+        return
+    feats = get_co_admin_features_sync()
+    text = (
+        "👮 <b>Co-Admin Permissions</b>\n\n"
+        "✅ = Co-admin can use\n"
+        "🔒 = Locked (Contact Developer)\n\n"
+        "Tap to toggle."
+    )
+    keyboard = []
+    for key, label in CO_FEATURE_LABELS.items():
+        on = feats.get(key, False)
+        mark = "✅" if on else "🔒"
+        keyboard.append([InlineKeyboardButton(f"{mark} {label}", callback_data=f"cofeat_toggle_{key}")])
+    keyboard.append([btn("♻️ Reset defaults", callback_data="cofeat_reset", key="admin_menu")])
+    keyboard.append([btn("⬅️ Back", callback_data="admin_menu_admin_settings", key="admin_menu")])
+    if query:
+        try:
+            await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+        except Exception:
+            await context.bot.send_message(query.from_user.id, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+
+async def co_features_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    if not await is_main_admin(query.from_user.id):
+        return
+    key = query.data.replace("cofeat_toggle_", "", 1)
+    if key not in DEFAULT_CO_ADMIN_FEATURES:
+        return
+    feats = get_co_admin_features_sync()
+    new_val = not bool(feats.get(key, False))
+    config_collection.update_one(
+        {"_id": "bot_config"},
+        {"$set": {f"co_admin_features.{key}": new_val}},
+        upsert=True
+    )
+    await co_features_menu(update, context)
+
+async def co_features_reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer("Reset!")
+    if not await is_main_admin(query.from_user.id):
+        return
     config_collection.update_one(
         {"_id": "bot_config"},
-        {"$set": {"btn_styles": dict(DEFAULT_BTN_STYLES)}},
+        {"$set": {"co_admin_features": dict(DEFAULT_CO_ADMIN_FEATURES)}},
         upsert=True
     )
-    await btn_colors_menu(update, context)
+    await co_features_menu(update, context)
 
 
 async def admin_settings_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = update.effective_user.id
-    if await is_co_admin_only(user_id):
-        await deny_co_admin_feature(update, context, "Admin Settings")
-        return
+    if not await co_admin_can(user_id, "admin_settings"):
+        if await is_co_admin_only(user_id):
+            await deny_co_admin_feature(update, context, "Admin Settings")
+            return
     if query: await query.answer()
     
     config = await get_config()
@@ -6145,11 +6332,11 @@ async def admin_settings_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
         [InlineKeyboardButton(f"📍 Default Publish Chat: {default_chat}", callback_data="admin_set_default_chat")],
         [InlineKeyboardButton("📢 Promo Channels (Thank You)", callback_data="admin_promo_channels")],
         [InlineKeyboardButton("🔘 Post Buttons Text", callback_data="admin_post_buttons")],
-        [InlineKeyboardButton("🎨 Button Colors", callback_data="admin_btn_colors")],
         [InlineKeyboardButton("🌐 Bot Language", callback_data="admin_set_language")],
         [InlineKeyboardButton("🚀 Custom Post Generator", callback_data="admin_custom_post")],
         [InlineKeyboardButton("📢 Broadcast Message", callback_data="admin_broadcast_start")],
         [InlineKeyboardButton("🧹 Clear Chat Request", callback_data="admin_clear_chat_menu")],
+        [InlineKeyboardButton("👮 Co-Admin Permissions", callback_data="admin_co_features")],
         [InlineKeyboardButton("⬅️ Back to Admin Menu", callback_data="admin_menu")]
     ]
     text = await format_message(context, "admin_menu_admin_settings")
@@ -6651,9 +6838,10 @@ async def send_promo_thank_you(bot, user_id: int):
 async def update_photo_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = update.effective_user.id
-    if await is_co_admin_only(user_id):
-        await deny_co_admin_feature(update, context, "Photo Settings")
-        return
+    if not await co_admin_can(user_id, "photo_settings"):
+        if await is_co_admin_only(user_id):
+            await deny_co_admin_feature(update, context, "Photo Settings")
+            return
     await query.answer()
     keyboard = [
         [InlineKeyboardButton("🖼️ Update Series/Season Photo", callback_data="admin_update_photo_content")],
@@ -7249,30 +7437,30 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE, from
     # Full menu for both Main Admin & Co-Admin
     # Locked for co-admin only (deny on click): Photo Settings, Bot Appearance, Bot Messages, Admin Settings
     keyboard = [
-        [btn("➕ Add Content", callback_data="admin_menu_add_content", role="main")],
+        [btn("➕ Add Content", callback_data="admin_menu_add_content", key="admin_menu_add_content")],
         [
-            btn("🗑️ Delete Content", callback_data="admin_menu_manage_content", role="bad"),
-            btn("✏️ Edit Content", callback_data="admin_menu_edit_content", role="main"),
+            btn("🗑️ Delete Content", callback_data="admin_menu_manage_content", key="admin_menu_manage_content"),
+            btn("✏️ Edit Content", callback_data="admin_menu_edit_content", key="admin_menu_edit_content"),
         ],
         [
-            btn("🔗 Other Links", callback_data="admin_menu_other_links", role="main"),
-            btn("✍️ Post Generator", callback_data="admin_post_gen", role="ok"),
+            btn("🔗 Other Links", callback_data="admin_menu_other_links", key="admin_menu_other_links"),
+            btn("✍️ Post Generator", callback_data="admin_post_gen", key="admin_post_gen"),
         ],
         [
-            btn("❤️ Donation", callback_data="admin_menu_donate_settings", role="bad"),
-            btn("⏱️ Auto-Delete Time", callback_data="admin_menu_auto_delete", role="main"),
+            btn("❤️ Donation", callback_data="admin_menu_donate_settings", key="admin_menu_donate_settings"),
+            btn("⏱️ Auto-Delete Time", callback_data="admin_menu_auto_delete", key="admin_menu_auto_delete"),
         ],
         [
-            btn("🖼️ Photo Settings", callback_data="admin_menu_update_photo", role="main"),
-            btn("🔗 Gen Link", callback_data="admin_gen_link", role="ok"),
+            btn("🖼️ Photo Settings", callback_data="admin_menu_update_photo", key="admin_menu_update_photo"),
+            btn("🔗 Gen Link", callback_data="admin_gen_link", key="admin_gen_link"),
         ],
         [
-            btn("🎨 Bot Appearance", callback_data="admin_menu_appearance", role="main"),
-            btn("📊 User Statistics", callback_data="admin_show_stats", role="main"),
+            btn("🎨 Bot Appearance", callback_data="admin_menu_appearance", key="admin_menu_appearance"),
+            btn("📊 User Statistics", callback_data="admin_show_stats", key="admin_show_stats"),
         ],
-        [btn("⚙ Bot Messages", callback_data="admin_menu_messages", role="main")],
-        [btn("🛠️ Admin Settings", callback_data="admin_menu_admin_settings", role="main")],
-        [btn("💬 Chats (Requests)", callback_data="admin_chats_menu", role="ok")],
+        [btn("⚙ Bot Messages", callback_data="admin_menu_messages", key="admin_menu_messages")],
+        [btn("🛠️ Admin Settings", callback_data="admin_menu_admin_settings", key="admin_menu_admin_settings")],
+        [btn("💬 Chats (Requests)", callback_data="admin_chats_menu", key="admin_chats_menu")],
     ]
     if await is_main_admin(user_id):
         admin_menu_text = await format_message(context, "admin_panel_main")
@@ -8525,9 +8713,12 @@ def main():
     bot_app.add_handler(CallbackQueryHandler(promo_channels_menu, pattern="^admin_promo_channels$"))
     bot_app.add_handler(CallbackQueryHandler(language_menu, pattern="^admin_set_language$"))
     bot_app.add_handler(CallbackQueryHandler(post_buttons_menu, pattern="^admin_post_buttons$"))
-    bot_app.add_handler(CallbackQueryHandler(btn_colors_menu, pattern="^admin_btn_colors$"))
-    bot_app.add_handler(CallbackQueryHandler(btn_colors_cycle, pattern="^btncolor_cycle_"))
-    bot_app.add_handler(CallbackQueryHandler(btn_colors_reset, pattern="^btncolor_reset$"))
+    bot_app.add_handler(CallbackQueryHandler(btn_colors_menu, pattern="^app_btn_colors"))
+    bot_app.add_handler(CallbackQueryHandler(btn_colors_set, pattern="^btncolor_set_"))
+    bot_app.add_handler(CallbackQueryHandler(btn_colors_reset_all, pattern="^btncolor_reset_all$"))
+    bot_app.add_handler(CallbackQueryHandler(co_features_menu, pattern="^admin_co_features$"))
+    bot_app.add_handler(CallbackQueryHandler(co_features_toggle, pattern="^cofeat_toggle_"))
+    bot_app.add_handler(CallbackQueryHandler(co_features_reset, pattern="^cofeat_reset$"))
     bot_app.add_handler(CallbackQueryHandler(admin_chats_menu, pattern="^admin_chats_menu$"))
     bot_app.add_handler(CallbackQueryHandler(request_timer_refresh, pattern="^request_timer_refresh$"))
     bot_app.add_handler(CallbackQueryHandler(file_timer_refresh, pattern="^file_timer_refresh$"))
