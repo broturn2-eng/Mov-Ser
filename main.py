@@ -1606,6 +1606,86 @@ async def admin_reply_temp(update: Update, text: str, seconds: int = 60, **kwarg
         logger.error(f"admin_reply_temp: {e}")
         return None
 
+
+# --- New Post notify all users + ephemeral auto-delete ---
+DEFAULT_NEW_POST_NOTIFY = (
+    "🆕 <b>New Posts Added!</b>\n\n"
+    "🎬 <b>{title}</b>\n\n"
+    "Group mein naya content upload ho gaya hai.\n"
+    "Download ke liye channel/group check karo."
+)
+DEFAULT_NEW_POST_NOTIFY_SAVED = DEFAULT_NEW_POST_NOTIFY  # mongo original template
+
+async def get_new_post_notify_text(title: str = "New content") -> str:
+    """Edited version from config goes to users; original stays in new_post_notify_saved."""
+    try:
+        cfg = config_collection.find_one({"_id": "bot_config"}) or {}
+        msgs = cfg.get("messages") or {}
+        # Prefer edited template; fall back to saved original then hardcoded
+        tpl = (msgs.get("new_post_notify")
+               or cfg.get("new_post_notify")
+               or msgs.get("new_post_notify_saved")
+               or cfg.get("new_post_notify_saved")
+               or DEFAULT_NEW_POST_NOTIFY)
+        try:
+            return tpl.format(title=title or "New content")
+        except Exception:
+            return tpl.replace("{title}", str(title or "New content"))
+    except Exception:
+        return DEFAULT_NEW_POST_NOTIFY.format(title=title or "New content")
+
+async def notify_all_users_new_post(bot, title: str = "New content"):
+    """Background: sab users ko new post message. Auto-delete after ephemeral timer."""
+    try:
+        cfg = config_collection.find_one({"_id": "bot_config"}) or {}
+        if cfg.get("new_post_notify_enabled", True) is False:
+            logger.info("new_post_notify disabled — skip")
+            return
+        text = await get_new_post_notify_text(title)
+        text = safe_html_message(text) if "safe_html_message" in globals() else text
+        eph = int(cfg.get("ephemeral_delete_seconds") or 1800)  # default 30 min
+        users = users_collection.find({}, {"_id": 1})
+        sent = failed = 0
+        for u in users:
+            uid = u.get("_id")
+            if not uid:
+                continue
+            try:
+                msg = await bot.send_message(chat_id=uid, text=text, parse_mode=ParseMode.HTML)
+                sent += 1
+                try:
+                    track_dm_msg(uid, msg.message_id)
+                    if eph > 0:
+                        asyncio.create_task(delete_message_later(bot, uid, msg.message_id, eph))
+                except Exception:
+                    pass
+                await asyncio.sleep(0.05)
+            except Exception:
+                failed += 1
+        logger.info(f"new_post_notify done. sent={sent} failed={failed} title={title}")
+    except Exception as e:
+        logger.error(f"notify_all_users_new_post: {e}")
+
+def get_ephemeral_seconds_sync() -> int:
+    try:
+        cfg = config_collection.find_one({"_id": "bot_config"}, {"ephemeral_delete_seconds": 1}) or {}
+        return int(cfg.get("ephemeral_delete_seconds") or 1800)
+    except Exception:
+        return 1800
+
+async def schedule_ephemeral_delete(bot, chat_id, message_id, seconds=None):
+    """Menu / notify / temporary msgs — auto delete after timer (default 30 min)."""
+    try:
+        if seconds is None:
+            seconds = get_ephemeral_seconds_sync()
+        if seconds <= 0 or not message_id:
+            return
+        track_dm_msg(chat_id, message_id)
+        asyncio.create_task(delete_message_later(bot, chat_id, message_id, seconds))
+    except Exception:
+        pass
+
+
 async def schedule_admin_msg_delete(bot, chat_id, message_id, seconds=60):
     try:
         track_dm_msg(chat_id, message_id)
@@ -1708,7 +1788,8 @@ async def _update_anime_timestamp(anime_name: str):
 (DS_GET_ANIME, DS_GET_SEASON, DS_CONFIRM) = range(31, 34) 
 (DE_GET_ANIME, DE_GET_SEASON, DE_GET_EPISODE, DE_CONFIRM) = range(34, 38) 
 (M_GET_DONATE_THANKS, M_GET_FILE_WARNING) = range(40, 42) 
-(CS_GET_DELETE_TIME, CS_GET_PROMO_DELETE, CS_GET_PREVIEW_DELETE, CS_GET_CLEAR_REMINDER) = range(45, 49) 
+(CS_GET_DELETE_TIME, CS_GET_PROMO_DELETE, CS_GET_PREVIEW_DELETE, CS_GET_CLEAR_REMINDER) = range(45, 49)
+CS_GET_EPHEMERAL, CS_GET_NEW_POST_MSG = 910, 911 
 (UP_GET_ANIME, UP_GET_TARGET, UP_GET_POSTER) = range(48, 51) 
 (CA_GET_ID, CA_CONFIRM) = range(51, 53) 
 (CR_GET_ID, CR_CONFIRM) = range(53, 55) 
@@ -3763,6 +3844,114 @@ async def clear_reminder_loop(bot):
             logger.error(f"clear_reminder_loop: {e}")
         await asyncio.sleep(20 * 60)
 
+
+# --- Ephemeral delete + New Post Notify settings ---
+async def set_ephemeral_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    cfg = await get_config()
+    cur = int(cfg.get("ephemeral_delete_seconds") or 1800)
+    text = (
+        f"💬 <b>Menu / Notify Auto-Delete</b>\n\n"
+        f"Current: <b>{cur} seconds</b> ({cur // 60} min)\n\n"
+        "Yeh timer /user menu, New Post alerts, aur temporary bot msgs pe lagta hai.\n\n"
+        "Seconds mein number bhejo (min 30).\n"
+        "Example: 120 = 2 min, 1800 = 30 min\n\n"
+        "/cancel - Cancel"
+    )
+    await query.edit_message_text(text, parse_mode=ParseMode.HTML,
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="admin_menu_auto_delete")]]))
+    return CS_GET_EPHEMERAL
+
+async def set_ephemeral_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        sec = int(update.message.text.strip())
+        if sec < 30:
+            await update.message.reply_text("Minimum 30 seconds rakho.")
+            return CS_GET_EPHEMERAL
+        config_collection.update_one(
+            {"_id": "bot_config"},
+            {"$set": {"ephemeral_delete_seconds": sec}},
+            upsert=True
+        )
+        await update.message.reply_text(
+            f"✅ Menu/Notify auto-delete: <b>{sec}s</b> ({sec // 60} min)",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Auto-Delete Menu", callback_data="admin_menu_auto_delete")]])
+        )
+        return ConversationHandler.END
+    except Exception:
+        await update.message.reply_text("Invalid number. Sirf seconds (jaise 1800).")
+        return CS_GET_EPHEMERAL
+
+async def toggle_new_post_notify(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    cfg = await get_config()
+    cur = cfg.get("new_post_notify_enabled", True)
+    new_val = not bool(cur)
+    config_collection.update_one(
+        {"_id": "bot_config"},
+        {"$set": {"new_post_notify_enabled": new_val}},
+        upsert=True
+    )
+    await auto_delete_settings_menu(update, context)
+
+async def edit_new_post_msg_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    cfg = await get_config()
+    msgs = cfg.get("messages") or {}
+    current = msgs.get("new_post_notify") or cfg.get("new_post_notify") or DEFAULT_NEW_POST_NOTIFY
+    saved = msgs.get("new_post_notify_saved") or cfg.get("new_post_notify_saved") or DEFAULT_NEW_POST_NOTIFY_SAVED
+    # Ensure original saved once
+    if not msgs.get("new_post_notify_saved") and not cfg.get("new_post_notify_saved"):
+        config_collection.update_one(
+            {"_id": "bot_config"},
+            {"$set": {"messages.new_post_notify_saved": DEFAULT_NEW_POST_NOTIFY_SAVED}},
+            upsert=True
+        )
+    text = (
+        "✏️ <b>Edit New Post Notify Message</b>\n\n"
+        "Yeh message group pe publish ke baad <b>sab users</b> ko jata hai.\n\n"
+        f"<b>Current (users ko jayega):</b>\n<code>{current[:400]}</code>\n\n"
+        f"<b>Original saved (mongo):</b>\n<code>{str(saved)[:200]}</code>\n\n"
+        "Naya text bhejo. Use <code>{title}</code> for movie/series name.\n"
+        "/reset_notify - original wapas\n"
+        "/cancel - Cancel"
+    )
+    await query.edit_message_text(text, parse_mode=ParseMode.HTML,
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="admin_menu_auto_delete")]]))
+    return CS_GET_NEW_POST_MSG
+
+async def edit_new_post_msg_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text_in = (update.message.text or "").strip()
+    if text_in.lower() in ("/reset_notify", "reset"):
+        config_collection.update_one(
+            {"_id": "bot_config"},
+            {"$set": {
+                "messages.new_post_notify": DEFAULT_NEW_POST_NOTIFY,
+            }},
+            upsert=True
+        )
+        await update.message.reply_text(
+            "✅ New Post message original pe reset.",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Auto-Delete Menu", callback_data="admin_menu_auto_delete")]])
+        )
+        return ConversationHandler.END
+    # Save edited as active; keep original in new_post_notify_saved untouched
+    config_collection.update_one(
+        {"_id": "bot_config"},
+        {"$set": {"messages.new_post_notify": text_in}},
+        upsert=True
+    )
+    await update.message.reply_text(
+        "✅ New Post notify message update ho gaya.\nUsers ko yahi edited version jayega.\nMongo mein original saved alag hai.",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Auto-Delete Menu", callback_data="admin_menu_auto_delete")]])
+    )
+    return ConversationHandler.END
+
+
 async def auto_delete_settings_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """All auto-delete timers in one place"""
     query = update.callback_query
@@ -3771,29 +3960,40 @@ async def auto_delete_settings_menu(update: Update, context: ContextTypes.DEFAUL
     file_secs = int(config.get("delete_seconds", 300))
     thank_secs = int(config.get("promo_thank_you_delete_seconds") or 120)
     admin_secs = int(config.get("admin_preview_delete_seconds") or 30)
+    eph_secs = int(config.get("ephemeral_delete_seconds") or 1800)
     remind_hrs = float(config.get("chat_clear_reminder_hours") if config.get("chat_clear_reminder_hours") is not None else 6)
-    
+    notify_on = config.get("new_post_notify_enabled", True)
+
     def _fmt(s):
         m, sec = divmod(int(s), 60)
+        h, m2 = divmod(m, 60)
+        if h:
+            return f"{h}h {m2}m"
         return f"{m}m {sec}s" if m else f"{sec}s"
-    
+
     text = (
         "⏱️ <b>Auto-Delete Time Settings</b>\n\n"
         f"📁 <b>File Delete:</b> {_fmt(file_secs)} ({file_secs}s)\n"
         f"📢 <b>Promo Message:</b> {_fmt(thank_secs)} ({thank_secs}s)\n"
         f"👑 <b>Admin Preview Msgs:</b> {_fmt(admin_secs)} ({admin_secs}s)\n"
+        f"💬 <b>Menu / Notify msgs:</b> {_fmt(eph_secs)} ({eph_secs}s)\n"
+        f"🆕 <b>New Post Notify:</b> {'ON ✅' if notify_on else 'OFF 🔒'}\n"
         f"🧹 <b>Clear Chat Reminder:</b> {('OFF' if remind_hrs <= 0 else str(remind_hrs)+'h')}\n\n"
         "Kaunsa timer change karna hai?\n"
-        "<i>Clear Chat Reminder = active users ko X hours baad reminder + Clear button.</i>"
+        "<i>Menu/Notify = /user, new post alerts — auto delete (default 30 min).</i>"
     )
     keyboard = [
         [InlineKeyboardButton(f"📁 File Delete Time ({_fmt(file_secs)})", callback_data="admin_set_delete_time")],
         [InlineKeyboardButton(f"📢 Promo Delete Time ({_fmt(thank_secs)})", callback_data="admin_set_promo_delete")],
         [InlineKeyboardButton(f"👑 Admin Preview Delete ({_fmt(admin_secs)})", callback_data="admin_set_preview_delete")],
+        [InlineKeyboardButton(f"💬 Menu/Notify Delete ({_fmt(eph_secs)})", callback_data="admin_set_ephemeral")],
+        [InlineKeyboardButton(f"🆕 New Post Notify: {'ON' if notify_on else 'OFF'}", callback_data="admin_toggle_new_post_notify")],
+        [InlineKeyboardButton("✏️ Edit New Post Message", callback_data="admin_edit_new_post_msg")],
         [InlineKeyboardButton(f"🧹 Clear Chat Reminder ({'OFF' if remind_hrs <= 0 else str(remind_hrs)+'h'})", callback_data="admin_set_clear_reminder")],
         [InlineKeyboardButton("⬅️ Back to Admin Menu", callback_data="admin_menu")],
     ]
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+
 
 # --- Conversation: Set Auto-Delete Time ---
 async def set_delete_time_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -4609,6 +4809,14 @@ async def post_preview_publish(update: Update, context: ContextTypes.DEFAULT_TYP
             await schedule_clear_user_dm(context.bot, query.from_user.id, admin_clean_sec)
         except Exception as e:
             logger.warning(f"admin DM clear schedule: {e}")
+        # Auto notify all users about new post (background)
+        try:
+            title = (context.user_data.get("anime_name")
+                     or context.user_data.get("post_edit_title")
+                     or "New content")
+            asyncio.create_task(notify_all_users_new_post(context.bot, title=title))
+        except Exception as e:
+            logger.warning(f"new post notify schedule: {e}")
     except Exception as e:
         logger.error(f"Preview publish error: {e}", exc_info=True)
         await _safe_edit_preview(query, f"❌ Publish failed:\n<code>{e}</code>\n\nChat ID check karo ya bot ko channel/group mein admin banao.")
@@ -7559,9 +7767,13 @@ async def show_user_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, fro
         # Jab user ne /user command type kiya
         try:
             if menu_photo_id:
-                await update.message.reply_photo(photo=menu_photo_id, caption=menu_text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+                sent = await update.message.reply_photo(photo=menu_photo_id, caption=menu_text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
             else:
-                await update.message.reply_text(text=menu_text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+                sent = await update.message.reply_text(text=menu_text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+            try:
+                await schedule_ephemeral_delete(context.bot, user_id, sent.message_id)
+            except Exception:
+                pass
         except Exception as e:
             logger.error(f"Show user menu me error: {e}")
 
@@ -8880,7 +9092,27 @@ def main():
     bot_app.add_handler(broadcast_conv) # NAYA v34
     bot_app.add_handler(CallbackQueryHandler(back_to_admin_menu, pattern="^admin_menu$"))
     bot_app.add_handler(CallbackQueryHandler(clear_chats_callback, pattern="^user_clear_chats$"))
+    bot_app.add_handler(CallbackQueryHandler(toggle_new_post_notify, pattern="^admin_toggle_new_post_notify$"))
     bot_app.add_handler(CallbackQueryHandler(admin_clear_chat_menu, pattern="^admin_clear_chat_menu$"))
+    ephemeral_conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(set_ephemeral_start, pattern="^admin_set_ephemeral$")],
+        states={
+            CS_GET_EPHEMERAL: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_ephemeral_save)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel), CallbackQueryHandler(auto_delete_settings_menu, pattern="^admin_menu_auto_delete$")],
+        allow_reentry=True,
+    )
+    bot_app.add_handler(ephemeral_conv)
+    new_post_msg_conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(edit_new_post_msg_start, pattern="^admin_edit_new_post_msg$")],
+        states={
+            CS_GET_NEW_POST_MSG: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_new_post_msg_save)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel), CommandHandler("reset_notify", edit_new_post_msg_save), CallbackQueryHandler(auto_delete_settings_menu, pattern="^admin_menu_auto_delete$")],
+        allow_reentry=True,
+    )
+    bot_app.add_handler(new_post_msg_conv)
+
     bot_app.add_handler(CallbackQueryHandler(admin_clear_chat_send_now, pattern="^admin_clear_chat_send$"))
     bot_app.add_handler(CallbackQueryHandler(auto_delete_settings_menu, pattern="^admin_menu_auto_delete$"))
     bot_app.add_handler(CallbackQueryHandler(back_to_admin_settings_menu, pattern="^admin_menu_admin_settings$|^back_to_admin_settings$"))
