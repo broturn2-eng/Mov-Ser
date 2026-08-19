@@ -1657,21 +1657,24 @@ async def get_new_post_notify_text(title: str = "New content") -> str:
         return DEFAULT_NEW_POST_NOTIFY.format(title=title or "New content")
 
 def build_new_post_notify_keyboard(cfg, download_url: str = None):
-    """Download button for New Post notify — colour via Button Colors key new_post_dl_btn."""
+    """New Post NOTIFY button (user DM) — ALWAYS channel link, NEVER post short-link.
+    Colour key: new_post_dl_btn
+    Priority: new_post_download_url (admin) → links.channel → links.backup
+    (download_url / short-link intentionally ignored here)
+    """
     try:
         links = cfg.get("links") or {}
-        # Priority: this-post short link → admin new_post_download_url → links.download → channel/backup
-        url = (download_url
-               or cfg.get("new_post_download_url")
-               or links.get("download")
-               or links.get("channel")
-               or links.get("backup")
-               or "")
+        # Channel link only — short link is for the group/channel POST, not notify
+        url = (
+            cfg.get("new_post_download_url")
+            or links.get("channel")
+            or links.get("backup")
+            or ""
+        )
         if not url or not str(url).startswith(("http://", "https://", "tg://")):
             return None
         btn_text = (cfg.get("new_post_dl_btn_text")
-                    or cfg.get("btn_text_download")
-                    or "⬇️ DOWNLOAD")
+                    or "📢 Visit Channel")
         return InlineKeyboardMarkup([[
             btn(btn_text, url=str(url), key="new_post_dl_btn")
         ]])
@@ -4997,9 +5000,9 @@ async def post_preview_publish(update: Update, context: ContextTypes.DEFAULT_TYP
                 or "New content"
             )
             # Prefer short link of this post; else admin new_post_download_url / links.download
-            dl_url = context.user_data.get("short_link_url") or None
+            # Notify uses CHANNEL link only (admin setting). Short link stays on group post.
             asyncio.create_task(notify_all_users_new_post(
-                context.bot, title=str(title).strip(), download_url=dl_url
+                context.bot, title=str(title).strip(), download_url=None
             ))
         except Exception as e:
             logger.warning(f"new post notify schedule: {e}")
