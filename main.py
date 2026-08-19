@@ -353,8 +353,15 @@ COLORABLE_BUTTONS = {
         ("user_menu_donate", "❤️ User Menu · Donate"),
         ("user_menu_help", "🆘 User Menu · Help"),
         ("user_back_menu", "⬅️ User · Back to Menu"),
-        ("user_clear_chats", "🧹 User · Clear Chats"),
+        ("user_clear_chats", "🧹 Clear Chats (reminder btn)"),
         ("user_show_donate_menu", "❤️ User · Show Donate"),
+        ("clear_after_visit", "📢 After Clear · Visit Channel"),
+        ("clear_after_backup", "📦 After Clear · Backup"),
+        ("clear_after_help", "🆘 After Clear · Help"),
+        ("clear_after_donate", "❤️ After Clear · Donate"),
+        ("admin_clear_chat_send", "📤 Admin · Send Clear Now"),
+        ("admin_set_clear_reminder", "⏱️ Admin · Clear Auto Timer"),
+        ("admin_clear_chat_menu", "🧹 Admin · Clear Chat Menu"),
     ],
     "dm": [
         ("file_timer_refresh", "🔄 DM · File Timer Refresh"),
@@ -366,6 +373,9 @@ COLORABLE_BUTTONS = {
         ("dl_episode_btn", "🎞️ DM · Episode Select"),
         ("quality_7", "🎬 Quality · 720p"),
         ("quality_10", "🎬 Quality · 1080p"),
+        ("contact_developer", "📞 Contact Developer"),
+        ("request_start_btn", "🎬 Request a Movie (start)"),
+        ("user_start_menu", "📋 /start Menu Buttons"),
     ],
 }
 
@@ -512,7 +522,10 @@ def quality_display(q: str) -> str:
 
 # --- NAYA: Admin & Co-Admin Checks ---
 async def is_main_admin(user_id: int) -> bool:
-    return user_id == ADMIN_ID
+    try:
+        return int(user_id) == int(ADMIN_ID)
+    except Exception:
+        return user_id == ADMIN_ID
 
 async def is_co_admin(user_id: int) -> bool:
     if user_id == ADMIN_ID:
@@ -3619,15 +3632,15 @@ async def clear_chats_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 )
             kb = []
             if channel:
-                kb.append([InlineKeyboardButton(visit_txt, url=channel)])
+                kb.append([btn(visit_txt, url=channel, key="clear_after_visit")])
             row2 = []
             if backup:
-                row2.append(InlineKeyboardButton(backup_txt, url=backup))
+                row2.append(btn(backup_txt, url=backup, key="clear_after_backup"))
             if help_u:
-                row2.append(InlineKeyboardButton(help_txt, url=help_u))
+                row2.append(btn(help_txt, url=help_u, key="clear_after_help"))
             if row2:
                 kb.append(row2)
-            kb.append([InlineKeyboardButton(donate_txt, callback_data="user_show_donate_menu")])
+            kb.append([btn(donate_txt, callback_data="user_show_donate_menu", key="clear_after_donate")])
             await bot.send_message(
                 chat_id=uid,
                 text=greet,
@@ -3656,8 +3669,8 @@ CLEAR_CHAT_MSG = (
 async def _send_clear_msg_to_user(bot, uid: int) -> bool:
     from datetime import datetime
     try:
-        btn = InlineKeyboardMarkup([[InlineKeyboardButton("🧹 Clear Chats", callback_data="user_clear_chats")]])
-        sent = await bot.send_message(chat_id=uid, text=CLEAR_CHAT_MSG, parse_mode=ParseMode.HTML, reply_markup=btn)
+        markup = InlineKeyboardMarkup([[btn("🧹 Clear Chats", callback_data="user_clear_chats", key="user_clear_chats")]])
+        sent = await bot.send_message(chat_id=uid, text=CLEAR_CHAT_MSG, parse_mode=ParseMode.HTML, reply_markup=markup)
         track_dm_msg(uid, sent.message_id)
         users_collection.update_one(
             {"_id": uid},
@@ -3720,9 +3733,9 @@ async def admin_clear_chat_menu(update: Update, context: ContextTypes.DEFAULT_TY
         "User button dabaye to uska bot DM clean."
     )
     keyboard = [
-        [InlineKeyboardButton("📤 Send Now to Active Users", callback_data="admin_clear_chat_send")],
-        [InlineKeyboardButton(f"⏱️ Auto Timer: {status}", callback_data="admin_set_clear_reminder")],
-        [InlineKeyboardButton("⬅️ Back to Admin Settings", callback_data="admin_menu_admin_settings")],
+        [btn("📤 Send Now to Active Users", callback_data="admin_clear_chat_send", key="admin_clear_chat_send")],
+        [btn(f"⏱️ Auto Timer: {status}", callback_data="admin_set_clear_reminder", key="admin_set_clear_reminder")],
+        [btn("⬅️ Back to Admin Settings", callback_data="admin_menu_admin_settings", key="admin_menu_admin_settings")],
     ]
     if query:
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
@@ -6404,6 +6417,23 @@ async def btn_colors_reset_all(update: Update, context: ContextTypes.DEFAULT_TYP
     )
     _invalidate_btn_color_cache()
     await btn_colors_menu(update, context)
+
+CO_FEATURE_LABELS = {
+    "add_content": "➕ Add Content",
+    "delete_content": "🗑️ Delete Content",
+    "edit_content": "✏️ Edit Content",
+    "post_generator": "✍️ Post Generator",
+    "gen_link": "🔗 Gen Link",
+    "donation": "❤️ Donation",
+    "auto_delete": "⏱️ Auto-Delete Time",
+    "other_links": "🔗 Other Links",
+    "user_stats": "📊 User Statistics",
+    "chats": "💬 Chats (Requests)",
+    "photo_settings": "🖼️ Photo Settings",
+    "bot_appearance": "🎨 Bot Appearance",
+    "bot_messages": "⚙ Bot Messages",
+    "admin_settings": "🛠️ Admin Settings",
+}
 
 async def co_features_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
