@@ -266,36 +266,66 @@ ITEMS_PER_PAGE = 15  # 3 columns x 5 rows
 # Editable from: Bot Appearance → Button Colors (per-button)
 
 # Buttons that appear in Admin / User menus (id → label for editor)
-COLORABLE_BUTTONS = [
-    # Admin main panel
-    ("admin_menu_add_content", "➕ Add Content"),
-    ("admin_menu_manage_content", "🗑️ Delete Content"),
-    ("admin_menu_edit_content", "✏️ Edit Content"),
-    ("admin_menu_other_links", "🔗 Other Links"),
-    ("admin_post_gen", "✍️ Post Generator"),
-    ("admin_menu_donate_settings", "❤️ Donation"),
-    ("admin_menu_auto_delete", "⏱️ Auto-Delete Time"),
-    ("admin_menu_update_photo", "🖼️ Photo Settings"),
-    ("admin_gen_link", "🔗 Gen Link"),
-    ("admin_menu_appearance", "🎨 Bot Appearance"),
-    ("admin_show_stats", "📊 User Statistics"),
-    ("admin_menu_messages", "⚙ Bot Messages"),
-    ("admin_menu_admin_settings", "🛠️ Admin Settings"),
-    ("admin_chats_menu", "💬 Chats (Requests)"),
-    ("admin_menu", "⬅️ Back / Admin Menu"),
-    # Chats
-    ("chats_pending", "📩 Requested"),
-    ("chats_replied", "✅ Replied"),
-    ("chats_ban_start", "🚫 Ban User"),
-    # User-ish / common
-    ("user_show_donate_menu", "Donate"),
-    ("user_back_menu", "⬅️ Back to Menu"),
-    ("user_clear_chats", "Clear Chats"),
-    # Post-ish (generic ids for post generator buttons text already separate)
-    ("post_preview_publish", "Publish Post"),
-    ("post_preview_edit", "Edit Post"),
-    ("post_preview_cancel", "Cancel Post"),
-]
+COLORABLE_BUTTONS = {
+    "admin": [
+        ("admin_menu_add_content", "➕ Add Content"),
+        ("admin_menu_manage_content", "🗑️ Delete Content"),
+        ("admin_menu_edit_content", "✏️ Edit Content"),
+        ("admin_menu_other_links", "🔗 Other Links"),
+        ("admin_post_gen", "✍️ Post Generator"),
+        ("admin_menu_donate_settings", "❤️ Donation"),
+        ("admin_menu_auto_delete", "⏱️ Auto-Delete Time"),
+        ("admin_menu_update_photo", "🖼️ Photo Settings"),
+        ("admin_gen_link", "🔗 Gen Link"),
+        ("admin_menu_appearance", "🎨 Bot Appearance"),
+        ("admin_show_stats", "📊 User Statistics"),
+        ("admin_menu_messages", "⚙ Bot Messages"),
+        ("admin_menu_admin_settings", "🛠️ Admin Settings"),
+        ("admin_chats_menu", "💬 Chats (Requests)"),
+        ("admin_menu", "⬅️ Admin Back / Menu"),
+        ("chats_pending", "📩 Chats · Requested"),
+        ("chats_replied", "✅ Chats · Replied"),
+        ("chats_ban_start", "🚫 Chats · Ban User"),
+    ],
+    "post": [
+        ("post_btn_backup", "📌 Post · Backup"),
+        ("post_btn_verify", "✅ Post · How to Verify"),
+        ("post_btn_donate", "❤️ Post · Donate"),
+        ("post_btn_request", "🎬 Post · Request a Movie"),
+        ("post_btn_download", "⬇️ Post · DOWNLOAD"),
+        ("post_preview_publish", "🚀 Post · Publish"),
+        ("post_preview_edit", "✏️ Post · Edit"),
+        ("post_preview_cancel", "❌ Post · Cancel"),
+        ("post_preview_quote", "💬 Post · Quote"),
+        ("post_preview_change_chat", "📍 Post · Change Chat"),
+    ],
+    "user": [
+        ("user_menu_backup", "📌 User Menu · Backup"),
+        ("user_menu_donate", "❤️ User Menu · Donate"),
+        ("user_menu_help", "🆘 User Menu · Help"),
+        ("user_back_menu", "⬅️ User · Back to Menu"),
+        ("user_clear_chats", "🧹 User · Clear Chats"),
+        ("user_show_donate_menu", "❤️ User · Show Donate"),
+    ],
+    "dm": [
+        ("file_timer_refresh", "🔄 DM · File Timer Refresh"),
+        ("thankyou_timer_refresh", "🔄 DM · ThankYou Timer"),
+        ("request_timer_refresh", "🔄 DM · Request Timer"),
+        ("promo_btn1", "📢 DM · Promo Channel 1"),
+        ("promo_btn2", "📢 DM · Promo Channel 2"),
+        ("dl_season_btn", "📺 DM · Season Select"),
+        ("dl_episode_btn", "🎞️ DM · Episode Select"),
+        ("quality_7", "🎬 Quality · 720p"),
+        ("quality_10", "🎬 Quality · 1080p"),
+    ],
+}
+
+COLOR_CAT_LABELS = {
+    "admin": "👑 Admin Menu Buttons",
+    "post": "📝 Post Buttons (Download/Verify/Request…)",
+    "user": "👤 User Menu Buttons",
+    "dm": "💬 DM / Download / Quality",
+}
 
 STYLE_CYCLE = ["", "primary", "success", "danger"]  # "" = default (app grey)
 STYLE_LABEL = {"": "⚪ Default", "primary": "🔵 Blue", "success": "🟢 Green", "danger": "🔴 Red"}
@@ -489,7 +519,7 @@ async def send_request_limit_msg(update_or_user, context, limit_msg: str, user_i
     """Limit / cooldown message + Refresh button"""
     rtxt = await _refresh_btn_text()
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton(rtxt, callback_data="request_timer_refresh")]
+        [btn(rtxt, callback_data="request_timer_refresh", key="request_timer_refresh")]
     ])
     if hasattr(update_or_user, "message") and update_or_user.message:
         await update_or_user.message.reply_text(limit_msg, reply_markup=keyboard, parse_mode=ParseMode.HTML)
@@ -519,10 +549,10 @@ async def thankyou_timer_refresh(update: Update, context: ContextTypes.DEFAULT_T
     p1, p2 = config.get("promo_channel_1"), config.get("promo_channel_2")
     b1 = config.get("promo_btn1_text") or "📢 Join Channel"
     b2 = config.get("promo_btn2_text") or "📢 Join Channel 2"
-    if p1: row.append(InlineKeyboardButton(b1, url=p1))
-    if p2: row.append(InlineKeyboardButton(b2, url=p2))
+    if p1: row.append(btn(b1, url=p1, key="promo_btn1"))
+    if p2: row.append(btn(b2, url=p2, key="promo_btn2"))
     if row: keyboard.append(row)
-    keyboard.append([InlineKeyboardButton(rtxt, callback_data="thankyou_timer_refresh")])
+    keyboard.append([btn(rtxt, callback_data="thankyou_timer_refresh", key="thankyou_timer_refresh")])
     msg = config.get("promo_thank_you_msg") or "🙏 <b>Thank you for your time and consideration!</b>"
     if not doc or not doc.get("deadline"):
         await query.edit_message_text(msg + "\n\n✅ Timer over.", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
@@ -548,7 +578,7 @@ async def file_timer_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE)
     user_id = query.from_user.id
     doc = db['user_delete_timers'].find_one({"user_id": user_id})
     rtxt = await _refresh_btn_text()
-    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(rtxt, callback_data="file_timer_refresh")]])
+    keyboard = InlineKeyboardMarkup([[btn(rtxt, callback_data="file_timer_refresh", key="file_timer_refresh")]])
     if not doc or not doc.get("deadline"):
         await query.edit_message_text("✅ No active file timer (already deleted or none).", reply_markup=keyboard)
         return
@@ -579,7 +609,7 @@ async def request_timer_refresh(update: Update, context: ContextTypes.DEFAULT_TY
     allowed, remaining, limit_msg = await check_request_limit(user_id)
     rtxt = await _refresh_btn_text()
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton(rtxt, callback_data="request_timer_refresh")]
+        [btn(rtxt, callback_data="request_timer_refresh", key="request_timer_refresh")]
     ])
     if allowed:
         text = (
@@ -4221,11 +4251,11 @@ async def post_gen_get_short_link(update: Update, context: ContextTypes.DEFAULT_
         request_url = f"https://t.me/{bot_uname}?start=request"
         
         btn_map = {
-            "backup": InlineKeyboardButton(t_backup, url=backup_url),
-            "verify": InlineKeyboardButton(t_verify, url=verify_bot_url),
-            "donate": InlineKeyboardButton(t_donate, url=donate_url),
-            "request": InlineKeyboardButton(t_request, url=request_url),
-            "download": InlineKeyboardButton(t_download, url=short_link_url),
+            "backup": btn(t_backup, url=backup_url, key="post_btn_backup"),
+            "verify": btn(t_verify, url=verify_bot_url, key="post_btn_verify"),
+            "donate": btn(t_donate, url=donate_url, key="post_btn_donate"),
+            "request": btn(t_request, url=request_url, key="post_btn_request"),
+            "download": btn(t_download, url=short_link_url, key="post_btn_download"),
         }
         show = {
             "backup": config.get("btn_show_backup", True),
@@ -6146,58 +6176,108 @@ async def chats_ban_id_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # --- Button Colors (Bot Appearance → per-button) ---
-async def btn_colors_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, page: int = 0):
+async def btn_colors_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, cat: str = None, page: int = 0):
     query = update.callback_query
     if query:
-        await query.answer()
-        if query.data.startswith("app_btn_colors_page_"):
+        try:
+            await query.answer()
+        except Exception:
+            pass
+        data = query.data or ""
+        if data.startswith("app_btn_colors_cat_"):
+            parts = data.split("_")
+            # app_btn_colors_cat_admin_0
             try:
-                page = int(query.data.split("_")[-1])
+                cat = parts[4]
+                page = int(parts[5]) if len(parts) > 5 else 0
             except Exception:
+                cat = parts[4] if len(parts) > 4 else None
                 page = 0
+        elif data == "app_btn_colors" or data.startswith("app_btn_colors_page_"):
+            cat = None
     user_id = update.effective_user.id
     if not await co_admin_can(user_id, "bot_appearance"):
         if await is_co_admin_only(user_id):
             await deny_co_admin_feature(update, context, "Button Colors")
             return
+
+    # Category picker (fast)
+    if not cat or cat not in COLORABLE_BUTTONS:
+        text = (
+            "🎨 <b>Button Colors</b>\n\n"
+            "Category choose karo — har button ka colour alag set hoga.\n"
+            "Cycle: ⚪ Default → 🔵 Blue → 🟢 Green → 🔴 Red"
+        )
+        keyboard = []
+        for cid, label in COLOR_CAT_LABELS.items():
+            n = len(COLORABLE_BUTTONS.get(cid, []))
+            keyboard.append([btn(f"{label} ({n})", callback_data=f"app_btn_colors_cat_{cid}_0", key="app_btn_colors")])
+        keyboard.append([btn("♻️ Reset ALL colours", callback_data="btncolor_reset_all", key="admin_menu")])
+        keyboard.append([btn("⬅️ Back to Appearance", callback_data="admin_menu_appearance", key="admin_menu")])
+        if query:
+            try:
+                await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+            except Exception:
+                pass
+        return
+
     cmap = get_btn_color_map_sync()
-    per_page = 8
-    total = len(COLORABLE_BUTTONS)
+    items = COLORABLE_BUTTONS[cat]
+    per_page = 10
+    total = len(items)
     start = page * per_page
-    chunk = COLORABLE_BUTTONS[start:start + per_page]
+    chunk = items[start:start + per_page]
     text = (
-        "🎨 <b>Button Colors</b>\n\n"
-        "Har button pe dabao → colour cycle:\n"
-        "⚪ Default → 🔵 Blue → 🟢 Green → 🔴 Red → ⚪\n\n"
-        f"Page {page + 1}/{(total + per_page - 1) // per_page}"
+        f"🎨 <b>{COLOR_CAT_LABELS.get(cat, cat)}</b>\n\n"
+        f"Button dabao → colour change (fast).\n"
+        f"Page {page + 1}/{(max(1, (total + per_page - 1) // per_page))}"
     )
     keyboard = []
     for bid, label in chunk:
         cur = cmap.get(bid, "")
         emoji = STYLE_LABEL.get(cur, "⚪ Default")
-        short = label if len(label) < 28 else label[:25] + "…"
-        keyboard.append([btn(f"{short} · {emoji}", callback_data=f"btncolor_set_{bid}", key=bid)])
+        short = label if len(label) < 30 else label[:27] + "…"
+        keyboard.append([btn(f"{short} · {emoji}", callback_data=f"btncolor_set_{cat}_{page}_{bid}", key=bid)])
     nav = []
     if page > 0:
-        nav.append(btn("⬅️ Prev", callback_data=f"app_btn_colors_page_{page - 1}", key="admin_menu"))
+        nav.append(btn("⬅️", callback_data=f"app_btn_colors_cat_{cat}_{page - 1}", key="admin_menu"))
     if start + per_page < total:
-        nav.append(btn("Next ➡️", callback_data=f"app_btn_colors_page_{page + 1}", key="admin_menu"))
+        nav.append(btn("➡️", callback_data=f"app_btn_colors_cat_{cat}_{page + 1}", key="admin_menu"))
     if nav:
         keyboard.append(nav)
-    keyboard.append([btn("♻️ Reset all colours", callback_data="btncolor_reset_all", key="admin_menu")])
-    keyboard.append([btn("⬅️ Back to Appearance", callback_data="admin_menu_appearance", key="admin_menu")])
+    keyboard.append([btn("📂 Categories", callback_data="app_btn_colors", key="app_btn_colors")])
+    keyboard.append([btn("⬅️ Appearance", callback_data="admin_menu_appearance", key="admin_menu")])
     if query:
         try:
             await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+        except BadRequest as e:
+            if "not modified" not in str(e).lower():
+                try:
+                    await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(keyboard))
+                except Exception:
+                    pass
         except Exception:
-            await context.bot.send_message(query.from_user.id, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+            pass
 
 async def btn_colors_set(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
-    bid = query.data.replace("btncolor_set_", "", 1)
-    valid_ids = {x[0] for x in COLORABLE_BUTTONS}
+    # btncolor_set_{cat}_{page}_{bid}
+    data = (query.data or "").replace("btncolor_set_", "", 1)
+    parts = data.split("_", 2)
+    if len(parts) < 3:
+        await query.answer()
+        return
+    cat, page_s, bid = parts[0], parts[1], parts[2]
+    try:
+        page = int(page_s)
+    except Exception:
+        page = 0
+    valid_ids = set()
+    for lst in COLORABLE_BUTTONS.values():
+        for x, _ in lst:
+            valid_ids.add(x)
     if bid not in valid_ids:
+        await query.answer("Unknown button")
         return
     cmap = get_btn_color_map_sync()
     cur = cmap.get(bid, "")
@@ -6217,13 +6297,18 @@ async def btn_colors_set(update: Update, context: ContextTypes.DEFAULT_TYPE):
             {"$unset": {f"btn_color_map.{bid}": ""}},
             upsert=True
         )
-    # stay on same page if possible
-    page = 0
-    for i, (x, _) in enumerate(COLORABLE_BUTTONS):
-        if x == bid:
-            page = i // 8
-            break
-    await btn_colors_menu(update, context, page=page)
+    # Fast feedback in answer toast
+    try:
+        await query.answer(STYLE_LABEL.get(nxt, "Default"), show_alert=False)
+    except Exception:
+        pass
+    # Rebuild only this category page (fast)
+    class _Fake:
+        pass
+    # reuse menu with cat/page
+    if query:
+        query.data = f"app_btn_colors_cat_{cat}_{page}"
+    await btn_colors_menu(update, context, cat=cat, page=page)
 
 async def btn_colors_reset_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -6233,27 +6318,7 @@ async def btn_colors_reset_all(update: Update, context: ContextTypes.DEFAULT_TYP
         {"$unset": {"btn_color_map": ""}},
         upsert=True
     )
-    await btn_colors_menu(update, context, page=0)
-
-
-
-# --- Co-Admin Permissions (feature on/off) ---
-CO_FEATURE_LABELS = {
-    "add_content": "➕ Add Content",
-    "delete_content": "🗑️ Delete Content",
-    "edit_content": "✏️ Edit Content",
-    "post_generator": "✍️ Post Generator",
-    "gen_link": "🔗 Gen Link",
-    "donation": "❤️ Donation",
-    "auto_delete": "⏱️ Auto-Delete Time",
-    "other_links": "🔗 Other Links",
-    "user_stats": "📊 User Statistics",
-    "chats": "💬 Chats (Requests)",
-    "photo_settings": "🖼️ Photo Settings",
-    "bot_appearance": "🎨 Bot Appearance",
-    "bot_messages": "⚙ Bot Messages",
-    "admin_settings": "🛠️ Admin Settings",
-}
+    await btn_colors_menu(update, context)
 
 async def co_features_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -6801,13 +6866,13 @@ async def send_promo_thank_you(bot, user_id: int):
         keyboard = []
         row = []
         if p1:
-            row.append(InlineKeyboardButton(btn1_text, url=p1))
+            row.append(btn(btn1_text, url=p1, key="promo_btn1"))
         if p2:
-            row.append(InlineKeyboardButton(btn2_text, url=p2))
+            row.append(btn(btn2_text, url=p2, key="promo_btn2"))
         if row:
             keyboard.append(row)
         rtxt = config.get("btn_text_refresh_timer") or "🔄 Refresh Timer"
-        keyboard.append([InlineKeyboardButton(rtxt, callback_data="thankyou_timer_refresh")])
+        keyboard.append([btn(rtxt, callback_data="thankyou_timer_refresh", key="thankyou_timer_refresh")])
         
         reply_markup = InlineKeyboardMarkup(keyboard) if keyboard else None
         try:
@@ -7323,9 +7388,9 @@ async def show_user_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, fro
     backup_url = links.get('backup') or "https://t.me/"
     help_url = links.get('help') or "https://t.me/" 
 
-    btn_backup = InlineKeyboardButton("Backup", url=backup_url)
-    btn_donate = InlineKeyboardButton("Donate", callback_data="user_show_donate_menu")
-    btn_help = InlineKeyboardButton("🆘 Help", url=help_url) 
+    btn_backup = btn("Backup", url=backup_url, key="user_menu_backup")
+    btn_donate = btn("Donate", callback_data="user_show_donate_menu", key="user_menu_donate")
+    btn_help = btn("🆘 Help", url=help_url, key="user_menu_help")
 
     keyboard = [
         [btn_backup, btn_donate],
@@ -7727,7 +7792,7 @@ async def download_button_handler(update: Update, context: ContextTypes.DEFAULT_
                     chat_id=user_id,
                     text=f"⏳ <b>Files auto-delete in:</b> <code>{tstr}</code>\n\nRefresh dabake remaining time dekho.",
                     parse_mode=ParseMode.HTML,
-                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(rtxt, callback_data="file_timer_refresh")]])
+                    reply_markup=InlineKeyboardMarkup([[btn(rtxt, callback_data="file_timer_refresh", key="file_timer_refresh")]])
                 )
                 try:
                     db['user_delete_timers'].update_one(
@@ -7781,7 +7846,7 @@ async def download_button_handler(update: Update, context: ContextTypes.DEFAULT_
                 return
             
             sorted_eps = sorted(episode_keys, key=lambda x: [int(c) if c.isdigit() else c for c in re.split(r'(\d+)', x)])
-            buttons = [InlineKeyboardButton(f"Episode {ep}", callback_data=f"dl{anime_id_str}__{season_name}__{ep}") for ep in sorted_eps] 
+            buttons = [btn(f"Episode {ep}", callback_data=f"dl{anime_id_str}__{season_name}__{ep}", key="dl_episode_btn") for ep in sorted_eps] 
             keyboard = build_grid_keyboard(buttons, 2)
             keyboard.append([InlineKeyboardButton("⬅️ Back", callback_data=f"dl{anime_id_str}")]) 
             
@@ -7973,7 +8038,7 @@ async def download_button_handler(update: Update, context: ContextTypes.DEFAULT_
                     chat_id=user_id,
                     text=f"⏳ <b>Files auto-delete in:</b> <code>{tstr}</code>\n\nRefresh dabake remaining time dekho.",
                     parse_mode=ParseMode.HTML,
-                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(rtxt, callback_data="file_timer_refresh")]])
+                    reply_markup=InlineKeyboardMarkup([[btn(rtxt, callback_data="file_timer_refresh", key="file_timer_refresh")]])
                 )
                 try:
                     db['user_delete_timers'].update_one(
@@ -8021,7 +8086,7 @@ async def download_button_handler(update: Update, context: ContextTypes.DEFAULT_
             return
         
         sorted_seasons = sorted(seasons.keys(), key=lambda x: [int(c) if c.isdigit() else c for c in re.split(r'(\d+)', x)])
-        buttons = [InlineKeyboardButton(f"Season {s}", callback_data=f"dl{anime_id_str}__{s}") for s in sorted_seasons] 
+        buttons = [btn(f"Season {s}", callback_data=f"dl{anime_id_str}__{s}", key="dl_season_btn") for s in sorted_seasons] 
         keyboard = build_grid_keyboard(buttons, 1) 
         keyboard.append([InlineKeyboardButton("⬅️ Back to Bot Menu", callback_data="user_back_menu")])
         
